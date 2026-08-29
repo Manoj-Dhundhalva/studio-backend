@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "esnext",
+
+    "lib": ["esnext"],
+    "types": ["node"],
+
+    "sourceMap": false,
+
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
+
+    /* Module Resolution Options */
+    "esModuleInterop": true /* Allow default imports from modules with no default export */,
+    "forceConsistentCasingInFileNames": true /* Disallow inconsistencies in casing in file names */,
+
+    /* Strict Type-Checking Options */
+    "strict": true /* Enable all strict type-checking options */,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitAny": true /* Raise error on expressions with an implied 'any' type */,
+    "noUncheckedIndexedAccess": true /* Enable checking for undefined on indexed access */,
+
+    "skipLibCheck": true /* Skip type checking of all declaration files */,
+
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*", "__test__/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
