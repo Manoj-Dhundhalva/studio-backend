@@ -1,11 +1,9 @@
 import { Router } from "express";
 
-import contestRoutes from "../modules/contest/contest.routes.js";
-import problemRoutes from "../modules/problem/problem.routes.js";
+import authRoutes from "@/modules/auth/auth.routes.js";
 
 const router = Router();
 
-router.use("/contest", contestRoutes);
-router.use("/problem", problemRoutes);
+router.use("/auth", authRoutes);
 
 export default router;

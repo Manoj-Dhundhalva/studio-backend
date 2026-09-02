@@ -1,25 +1,25 @@
+import { JwtUtils } from "./jwt.utils.js";
+import { TimeUtils } from "./time.utils.js";
+import { UserUtils } from "./user.utils.js";
+
 class Utils {
   private static instance: Utils;
 
-  private constructor() {}
+  public time: TimeUtils;
+  public user: UserUtils;
+  public jwt: JwtUtils;
 
-  public static getInstance(): Utils {
+  private constructor() {
+    this.time = TimeUtils.getInstance();
+    this.user = UserUtils.getInstance();
+    this.jwt = JwtUtils.getInstance();
+  }
+
+  static getInstance(): Utils {
     if (!Utils.instance) {
       Utils.instance = new Utils();
     }
     return Utils.instance;
-  }
-
-  stringToNumber(text: unknown): number | undefined {
-    if (typeof text !== "string") return undefined;
-    const trimmed = text.trim();
-    if (!trimmed) return undefined;
-    const num = Number(trimmed);
-    return Number.isNaN(num) ? undefined : num;
-  }
-
-  sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 

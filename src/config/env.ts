@@ -20,10 +20,20 @@ const envSchema = z.object({
 
   PORT: z.coerce.number().positive().default(3000),
 
-  CODEFORCES_BASE_URL: z.url().default("https://codeforces.com"),
+  GOOGLE_CLIENT_ID: z.string(),
+  GOOGLE_CLIENT_SECRET: z.string(),
 
-  WEB_SCRAPER_API_URL: z.url().refine((url) => ["http:", "https:"].includes(new URL(url).protocol), {
-    message: "WEB_SCRAPER_API_URL must use http:// or https://",
+  ACCESS_TOKEN_SECRET: z.string(),
+  ACCESS_TOKEN_EXPIRE: z.string(),
+
+  CLIENT_URL: z.url().refine((url) => ["http:", "https:"].includes(new URL(url).protocol), {
+    message: "CLIENT_URL must use http:// or https://",
+  }),
+
+  // Public origin of this API. Google's OAuth callbackURL is built from it, so it
+  // must match the redirect URI registered in the Google Cloud console.
+  SERVER_URL: z.url().refine((url) => ["http:", "https:"].includes(new URL(url).protocol), {
+    message: "SERVER_URL must use http:// or https://",
   }),
 
   DATABASE_URL: z.url().check((ctx) => {

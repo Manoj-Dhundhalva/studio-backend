@@ -1,13 +1,10 @@
-import { pgTable, text, integer, timestamp, primaryKey, real, boolean } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { pgEnum, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
-export const contests = pgTable("contests", {
-  contestId: integer("contest_id").primaryKey(),
-  contestName: text("contest_name").default(""),
-  type: text("type").default(""),
-  startTime: integer("start_time").notNull(),
-  duration: integer("duration").notNull(),
-  editorialUrl: text("editorial_url").default(""),
+export const users = pgTable("users", {
+  userId: uuid("user_id").primaryKey().defaultRandom(),
+  email: text("email").notNull().unique(),
+  username: text("name").notNull(),
+  avatarUrl: text("avatar_url"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at")
     .notNull()
@@ -15,55 +12,36 @@ export const contests = pgTable("contests", {
     .$onUpdate(() => new Date()),
 });
 
-export const problems = pgTable(
-  "problems",
+export const projects = pgTable("projects", {
+  projectId: uuid("project_id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at")
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export const projectMemberRoleEnum = pgEnum("project_member_role", ["admin", "editor", "viewer"]);
+
+export const projectMembers = pgTable(
+  "project_members",
   {
-    contestId: integer("contest_id")
+    projectId: uuid("project_id")
       .notNull()
-      .references(() => contests.contestId),
-    problemIndex: text("problem_index").notNull(),
-    title: text("title").default(""),
-    rating: integer("rating"),
-
-    timeLimitValue: real("time_limit_value"),
-    timeLimitUnit: text("time_limit_unit").default(""),
-
-    memoryLimitValue: integer("memory_limit_value"),
-    memoryLimitUnit: text("memory_limit_unit").default(""),
-
-    problemStatement: text("problem_statement").default(""),
-
-    inputSpecification: text("input_specification").default(""),
-    outputSpecification: text("output_specification").default(""),
-
-    note: text("note").default(""),
-
-    inputTestCase: text("input_test_case").default(""),
-    outputTestCase: text("output_test_case").default(""),
-
-    tags: text("tags").array().notNull().default([]),
-
-    isScraped: boolean("is_scraped").notNull().default(false),
-
-    solutions: text("solutions").array().notNull().default([]),
-
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.userId, { onDelete: "cascade" }),
+    role: projectMemberRoleEnum("role").notNull().default("viewer"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at")
       .notNull()
       .defaultNow()
       .$onUpdate(() => new Date()),
   },
-  (table) => [primaryKey({ columns: [table.problemIndex, table.contestId] })],
+  (table) => [
+    primaryKey({
+      columns: [table.projectId, table.userId],
+    }),
+  ],
 );
-
-// Relations
-export const contestsRelations = relations(contests, ({ many }) => ({
-  problems: many(problems),
-}));
-
-export const problemsRelations = relations(problems, ({ one }) => ({
-  contest: one(contests, {
-    fields: [problems.contestId],
-    references: [contests.contestId],
-  }),
-}));
