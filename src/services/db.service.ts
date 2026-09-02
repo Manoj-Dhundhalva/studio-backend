@@ -23,6 +23,20 @@ export class DbService {
     return user ?? null;
   }
 
+  async findUserById(userId: string): Promise<User | null> {
+    const [user] = await db.select().from(users).where(eq(users.userId, userId)).limit(1);
+    return user ?? null;
+  }
+
+  async updateUsername(userId: string, username: string): Promise<User | null> {
+    const [user] = await db
+      .update(users)
+      .set({ username })
+      .where(eq(users.userId, userId))
+      .returning();
+    return user ?? null;
+  }
+
   /**
    * Creates the user, or returns the existing row when the email is already taken.
    *

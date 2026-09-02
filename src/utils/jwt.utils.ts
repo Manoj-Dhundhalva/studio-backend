@@ -21,4 +21,8 @@ export class JwtUtils {
       expiresIn: env.ACCESS_TOKEN_EXPIRE,
     } as SignOptions);
   };
+
+  verifyAccessToken = (token: string): TAccessTokenPayload => {
+    return jwt.verify(token, env.ACCESS_TOKEN_SECRET) as TAccessTokenPayload;
+  };
 }
