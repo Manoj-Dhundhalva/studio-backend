@@ -1,4 +1,4 @@
-import type { Canvas, CanvasElement, ProjectMemberRole, User } from "@/services/db.service.js";
+import type { Canvas, CanvasElement, ProjectMedia, ProjectMemberRole, User } from "@/services/db.service.js";
 import type { TAspectRatioPreset, TCanvasElementType, TElementProps } from "@/types/canvas.types.js";
 
 /**
@@ -50,6 +50,9 @@ export type TPresenceMember = {
 export type TElementDto = Omit<CanvasElement, "createdAt" | "updatedAt" | "deletedAt">;
 
 export type TCanvasDto = Omit<Canvas, "createdAt" | "updatedAt">;
+
+/** `publicId` stays server-only — a Cloudinary implementation detail, not needed to render or insert the media. */
+export type TProjectMediaDto = Omit<ProjectMedia, "publicId" | "createdAt">;
 
 export type TElementCreateInput = {
   /**
@@ -203,6 +206,11 @@ export type ServerToClientEvents = {
   "cursor:moved": (payload: { projectId: string; socketId: string; userId: string; x: number; y: number }) => void;
   "selection:changed": (payload: { projectId: string; socketId: string; elementIds: string[] }) => void;
   "presence:activeSlideChanged": (payload: { projectId: string; socketId: string; canvasId: string }) => void;
+
+  // Uploaded/deleted via REST (multipart doesn't belong on a socket event), then
+  // broadcast here so every other open tab's Uploads panel updates live.
+  "media:uploaded": (payload: { projectId: string; socketId: string; media: TProjectMediaDto }) => void;
+  "media:deleted": (payload: { projectId: string; socketId: string; mediaId: string }) => void;
 
   "slide:created": (payload: {
     projectId: string;

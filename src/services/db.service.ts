@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, exists, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db/connection.js";
-import { canvasElements, canvases, projectMembers, projects, users } from "@/db/schema.js";
+import { canvasElements, canvases, projectMedia, projectMembers, projects, users } from "@/db/schema.js";
 
 export type NewUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -11,6 +11,8 @@ export type Canvas = typeof canvases.$inferSelect;
 export type NewCanvas = typeof canvases.$inferInsert;
 export type CanvasElement = typeof canvasElements.$inferSelect;
 export type NewCanvasElement = typeof canvasElements.$inferInsert;
+export type ProjectMedia = typeof projectMedia.$inferSelect;
+export type NewProjectMedia = typeof projectMedia.$inferInsert;
 
 export type UserProjectSummary = {
   projectId: string;
@@ -320,6 +322,45 @@ export class DbService {
     ]);
 
     return { members, total: totalRow?.count ?? 0 };
+  }
+
+  /** Every file uploaded to a project's Uploads panel, newest first. */
+  async listProjectMedia(projectId: string): Promise<ProjectMedia[]> {
+    return await db
+      .select()
+      .from(projectMedia)
+      .where(eq(projectMedia.projectId, projectId))
+      .orderBy(desc(projectMedia.createdAt));
+  }
+
+  async createProjectMedia(media: NewProjectMedia): Promise<ProjectMedia> {
+    const [row] = await db.insert(projectMedia).values(media).returning();
+
+    if (!row) {
+      throw new Error("Failed to record uploaded media");
+    }
+
+    return row;
+  }
+
+  /** Scoped to `projectId` so a guessed `mediaId` from another project can never be read or deleted. */
+  async getProjectMedia(projectId: string, mediaId: string): Promise<ProjectMedia | null> {
+    const [row] = await db
+      .select()
+      .from(projectMedia)
+      .where(and(eq(projectMedia.projectId, projectId), eq(projectMedia.mediaId, mediaId)))
+      .limit(1);
+
+    return row ?? null;
+  }
+
+  async deleteProjectMedia(projectId: string, mediaId: string): Promise<boolean> {
+    const deleted = await db
+      .delete(projectMedia)
+      .where(and(eq(projectMedia.projectId, projectId), eq(projectMedia.mediaId, mediaId)))
+      .returning({ mediaId: projectMedia.mediaId });
+
+    return deleted.length > 0;
   }
 }
 

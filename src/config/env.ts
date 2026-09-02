@@ -67,6 +67,13 @@ const envSchema = z.object({
 
   MAX_ELEMENTS_PER_CANVAS: z.coerce.number().positive().default(500),
 
+  // Uploads panel media storage. Left unset in staging until a real Cloudinary
+  // account is created — upload requests fail at call time until then, but the
+  // server still boots (no `.min(1)`, so an empty string still validates).
+  CLOUDINARY_CLOUD_NAME: z.string().default(""),
+  CLOUDINARY_API_KEY: z.string().default(""),
+  CLOUDINARY_API_SECRET: z.string().default(""),
+
   SHUTDOWN_TIMEOUT: z.coerce.number().positive().default(10 * 1000),
 });
 

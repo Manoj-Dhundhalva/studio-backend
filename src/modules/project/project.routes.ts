@@ -14,6 +14,10 @@ import {
 } from "@/modules/canvas/canvas.controller.js";
 import { canvasIdParamsSchema, createSlideRestSchema, reorderSlidesRestSchema, updateCanvasSchema } from "@/modules/canvas/canvas.validation.js";
 
+import { deleteMedia, listMedia, uploadMedia } from "@/modules/media/media.controller.js";
+import { mediaIdParamsSchema } from "@/modules/media/media.validation.js";
+import { mediaUpload } from "@/modules/media/media.upload.js";
+
 import {
   addProjectMembers,
   createProject,
@@ -102,5 +106,15 @@ router.patch(
 );
 router.post("/:projectId/slides/:canvasId/duplicate", validateParams(canvasIdParamsSchema), duplicateSlide);
 router.delete("/:projectId/slides/:canvasId", validateParams(canvasIdParamsSchema), deleteSlide);
+
+// Uploads panel media — same flat-mount reasoning as slides above.
+router.get("/:projectId/media", validateParams(projectIdParamsSchema), listMedia);
+router.post(
+  "/:projectId/media",
+  validateParams(projectIdParamsSchema),
+  mediaUpload.single("file"),
+  uploadMedia,
+);
+router.delete("/:projectId/media/:mediaId", validateParams(mediaIdParamsSchema), deleteMedia);
 
 export default router;

@@ -105,6 +105,36 @@ export const canvases = pgTable(
   ],
 );
 
+/**
+ * One uploaded file in a project's Uploads panel — stored on Cloudinary, with
+ * only the URL and light metadata kept here. Project-scoped rather than
+ * user-scoped: every member of the project can see and insert any file a
+ * teammate uploaded, matching how the rest of the canvas is shared.
+ */
+export const projectMedia = pgTable(
+  "project_media",
+  {
+    mediaId: uuid("media_id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    // Cloudinary's asset id — needed to delete the remote file, never sent to the client.
+    publicId: text("public_id").notNull(),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    bytes: integer("bytes").notNull(),
+    uploadedBy: uuid("uploaded_by").references(() => users.userId, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    // Serves "list this project's uploads, newest first" — the only read.
+    index("project_media_project_id_created_at_idx").on(table.projectId, table.createdAt),
+  ],
+);
+
 export const canvasElementTypeEnum = pgEnum("canvas_element_type", CANVAS_ELEMENT_TYPES);
 
 /**
