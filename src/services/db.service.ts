@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, exists, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db/connection.js";
-import { canvasElements, canvases, projectMedia, projectMembers, projects, users } from "@/db/schema.js";
+import { aiMessages, canvasElements, canvases, projectMedia, projectMembers, projects, users } from "@/db/schema.js";
 
 export type NewUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -13,6 +13,8 @@ export type CanvasElement = typeof canvasElements.$inferSelect;
 export type NewCanvasElement = typeof canvasElements.$inferInsert;
 export type ProjectMedia = typeof projectMedia.$inferSelect;
 export type NewProjectMedia = typeof projectMedia.$inferInsert;
+export type AiMessage = typeof aiMessages.$inferSelect;
+export type NewAiMessage = typeof aiMessages.$inferInsert;
 
 export type UserProjectSummary = {
   projectId: string;
@@ -361,6 +363,40 @@ export class DbService {
       .returning({ mediaId: projectMedia.mediaId });
 
     return deleted.length > 0;
+  }
+
+  /**
+   * A project's AI chat history, oldest first (chat display order). `limit`,
+   * when given, takes the most recent N turns instead of the whole history —
+   * used to bound how much context is sent to the model.
+   */
+  async listAiMessages(projectId: string, canvasId?: string, opts?: { limit?: number }): Promise<AiMessage[]> {
+    const where = canvasId
+      ? and(eq(aiMessages.projectId, projectId), eq(aiMessages.canvasId, canvasId))
+      : eq(aiMessages.projectId, projectId);
+
+    if (!opts?.limit) {
+      return await db.select().from(aiMessages).where(where).orderBy(asc(aiMessages.createdAt));
+    }
+
+    const recent = await db
+      .select()
+      .from(aiMessages)
+      .where(where)
+      .orderBy(desc(aiMessages.createdAt))
+      .limit(opts.limit);
+
+    return recent.reverse();
+  }
+
+  async createAiMessage(message: NewAiMessage): Promise<AiMessage> {
+    const [row] = await db.insert(aiMessages).values(message).returning();
+
+    if (!row) {
+      throw new Error("Failed to record AI message");
+    }
+
+    return row;
   }
 }
 

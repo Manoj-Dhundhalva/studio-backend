@@ -43,6 +43,13 @@
       "when": 1788373363212,
       "tag": "0005_lowly_boom_boom",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788383004253,
+      "tag": "0006_clever_plazm",
+      "breakpoints": true
     }
   ]
 }

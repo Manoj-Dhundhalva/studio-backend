@@ -18,6 +18,9 @@ import { deleteMedia, listMedia, uploadMedia } from "@/modules/media/media.contr
 import { mediaIdParamsSchema } from "@/modules/media/media.validation.js";
 import { mediaUpload } from "@/modules/media/media.upload.js";
 
+import { listAiMessages, sendAiMessage } from "@/modules/ai/ai.controller.js";
+import { sendAiMessageRestSchema } from "@/modules/ai/ai.validation.js";
+
 import {
   addProjectMembers,
   createProject,
@@ -116,5 +119,14 @@ router.post(
   uploadMedia,
 );
 router.delete("/:projectId/media/:mediaId", validateParams(mediaIdParamsSchema), deleteMedia);
+
+// AI design-assistant chat — same flat-mount reasoning as slides/media above.
+router.get("/:projectId/ai/messages", validateParams(projectIdParamsSchema), listAiMessages);
+router.post(
+  "/:projectId/ai/messages",
+  validateParams(projectIdParamsSchema),
+  validateBody(sendAiMessageRestSchema),
+  sendAiMessage,
+);
 
 export default router;

@@ -1,4 +1,4 @@
-import type { Canvas, CanvasElement, ProjectMedia, ProjectMemberRole, User } from "@/services/db.service.js";
+import type { AiMessage, Canvas, CanvasElement, ProjectMedia, ProjectMemberRole, User } from "@/services/db.service.js";
 import type { TAspectRatioPreset, TCanvasElementType, TElementProps } from "@/types/canvas.types.js";
 
 /**
@@ -53,6 +53,8 @@ export type TCanvasDto = Omit<Canvas, "createdAt" | "updatedAt">;
 
 /** `publicId` stays server-only — a Cloudinary implementation detail, not needed to render or insert the media. */
 export type TProjectMediaDto = Omit<ProjectMedia, "publicId" | "createdAt">;
+
+export type TAiMessageDto = Omit<AiMessage, "createdAt"> & { createdAt: string };
 
 export type TElementCreateInput = {
   /**
@@ -211,6 +213,10 @@ export type ServerToClientEvents = {
   // broadcast here so every other open tab's Uploads panel updates live.
   "media:uploaded": (payload: { projectId: string; socketId: string; media: TProjectMediaDto }) => void;
   "media:deleted": (payload: { projectId: string; socketId: string; mediaId: string }) => void;
+
+  // Sent via REST (a chat turn can take many seconds to resolve — not a fit for
+  // a socket ack), then broadcast here so every open tab's AI panel updates live.
+  "ai:messageCreated": (payload: { projectId: string; socketId: string; message: TAiMessageDto }) => void;
 
   "slide:created": (payload: {
     projectId: string;

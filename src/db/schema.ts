@@ -135,6 +135,38 @@ export const projectMedia = pgTable(
   ],
 );
 
+/**
+ * One turn of the AI design-assistant chat for a project. Scoped to both the
+ * project and the slide it was sent against, so history and AI context stay
+ * per-slide even though the panel itself is project-wide.
+ */
+export const aiMessageRoleEnum = pgEnum("ai_message_role", ["user", "assistant"]);
+
+export const aiMessages = pgTable(
+  "ai_messages",
+  {
+    messageId: uuid("message_id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    canvasId: uuid("canvas_id")
+      .notNull()
+      .references(() => canvases.canvasId, { onDelete: "cascade" }),
+    role: aiMessageRoleEnum("role").notNull(),
+    content: text("content").notNull(),
+    // Short human-readable description of the layout changes applied, e.g.
+    // "Created 2 elements, updated 1". Assistant rows only.
+    opsSummary: text("ops_summary"),
+    // Null for assistant rows.
+    createdBy: uuid("created_by").references(() => users.userId, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    // Serves "list this project's chat history, oldest first" — the only read.
+    index("ai_messages_project_id_created_at_idx").on(table.projectId, table.createdAt),
+  ],
+);
+
 export const canvasElementTypeEnum = pgEnum("canvas_element_type", CANVAS_ELEMENT_TYPES);
 
 /**

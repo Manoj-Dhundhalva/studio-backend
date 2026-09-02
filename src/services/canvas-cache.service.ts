@@ -494,12 +494,17 @@ export class CanvasCacheService {
     return resolved ? resolved.elements.size : 0;
   }
 
-  /** `null` means the client reused an id that already exists on this canvas, or the slide doesn't exist. */
+  /**
+   * `null` means the client reused an id that already exists on this canvas,
+   * or the slide doesn't exist. `createdBy` is nullable so AI-authored
+   * elements (no human on the other end of the request) can be recorded
+   * honestly instead of attributing them to whichever user sent the prompt.
+   */
   async createElement(
     projectId: string,
     canvasId: string,
     input: TElementCreateInput,
-    createdBy: string,
+    createdBy: string | null,
   ): Promise<CanvasElement | null> {
     const resolved = await this.resolveSlide(projectId, canvasId);
 
