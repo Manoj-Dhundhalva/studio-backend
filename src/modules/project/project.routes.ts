@@ -3,8 +3,16 @@ import { Router } from "express";
 import { requireAuth } from "@/middlewares/index.js";
 import { validateBody, validateParams, validateQuery } from "@/middlewares/validation.middleware.js";
 
-import { getCanvas, updateCanvas } from "@/modules/canvas/canvas.controller.js";
-import { updateCanvasSchema } from "@/modules/canvas/canvas.validation.js";
+import {
+  createSlide,
+  deleteSlide,
+  duplicateSlide,
+  getSlide,
+  getSlides,
+  reorderSlides,
+  updateSlide,
+} from "@/modules/canvas/canvas.controller.js";
+import { canvasIdParamsSchema, createSlideRestSchema, reorderSlidesRestSchema, updateCanvasSchema } from "@/modules/canvas/canvas.validation.js";
 
 import {
   addProjectMembers,
@@ -64,17 +72,35 @@ router.delete(
   removeProjectMembers,
 );
 
-// Canvas lives under the project it belongs to, so it inherits `requireAuth` and
-// the same `:projectId` validation as every sibling route. Registered flat
+// Slides live under the project they belong to, so they inherit `requireAuth`
+// and the same `:projectId` validation as every sibling route. Registered flat
 // rather than as a sub-router: `validateParams` rewrites `req.params` via
 // `Object.defineProperty`, which a mounted child router would only see through
 // `mergeParams`.
-router.get("/:projectId/canvas", validateParams(projectIdParamsSchema), getCanvas);
-router.patch(
-  "/:projectId/canvas",
+router.get("/:projectId/slides", validateParams(projectIdParamsSchema), getSlides);
+router.post(
+  "/:projectId/slides",
   validateParams(projectIdParamsSchema),
-  validateBody(updateCanvasSchema),
-  updateCanvas,
+  validateBody(createSlideRestSchema),
+  createSlide,
 );
+// Must be registered before "/:projectId/slides/:canvasId" — Express matches
+// route patterns in registration order, and ":canvasId" would otherwise
+// swallow the literal segment "reorder" as if it were a canvasId value.
+router.patch(
+  "/:projectId/slides/reorder",
+  validateParams(projectIdParamsSchema),
+  validateBody(reorderSlidesRestSchema),
+  reorderSlides,
+);
+router.get("/:projectId/slides/:canvasId", validateParams(canvasIdParamsSchema), getSlide);
+router.patch(
+  "/:projectId/slides/:canvasId",
+  validateParams(canvasIdParamsSchema),
+  validateBody(updateCanvasSchema),
+  updateSlide,
+);
+router.post("/:projectId/slides/:canvasId/duplicate", validateParams(canvasIdParamsSchema), duplicateSlide);
+router.delete("/:projectId/slides/:canvasId", validateParams(canvasIdParamsSchema), deleteSlide);
 
 export default router;

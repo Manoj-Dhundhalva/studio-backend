@@ -64,33 +64,46 @@ export const projectMembers = pgTable(
 );
 
 /**
- * The design surface of a project — its dimensions and background.
+ * One slide/page of a project — its dimensions and background.
  *
  * A separate table rather than columns on `projects` for two reasons: it keeps
- * canvas geometry out of the project-listing queries, and dropping the `unique`
- * on `projectId` later is all it takes to support multi-page designs.
+ * canvas geometry out of the project-listing queries, and a project can hold
+ * more than one of these (multi-page/slide designs) — `orderIndex` is the
+ * slide's position within its project.
  */
-export const canvases = pgTable("canvases", {
-  canvasId: uuid("canvas_id").primaryKey().defaultRandom(),
-  projectId: uuid("project_id")
-    .notNull()
-    .unique()
-    .references(() => projects.projectId, { onDelete: "cascade" }),
-  width: integer("width").notNull().default(1080),
-  height: integer("height").notNull().default(1080),
-  // Typed rather than bare `text` so the preset union is enforced everywhere the
-  // row is read, without needing a pgEnum migration to add a preset later.
-  aspectRatioPreset: text("aspect_ratio_preset").$type<TAspectRatioPreset>(),
-  backgroundColor: text("background_color").notNull().default("#ffffff"),
-  // Bumped on every resize so a reconnecting client can tell its cached canvas
-  // is stale, mirroring the per-element `version` below.
-  version: integer("version").notNull().default(0),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at")
-    .notNull()
-    .defaultNow()
-    .$onUpdate(() => new Date()),
-});
+export const canvases = pgTable(
+  "canvases",
+  {
+    canvasId: uuid("canvas_id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    width: integer("width").notNull().default(1080),
+    height: integer("height").notNull().default(1080),
+    // Typed rather than bare `text` so the preset union is enforced everywhere the
+    // row is read, without needing a pgEnum migration to add a preset later.
+    aspectRatioPreset: text("aspect_ratio_preset").$type<TAspectRatioPreset>(),
+    backgroundColor: text("background_color").notNull().default("#ffffff"),
+    // Bumped on every resize so a reconnecting client can tell its cached canvas
+    // is stale, mirroring the per-element `version` below.
+    version: integer("version").notNull().default(0),
+    // Position among a project's slides. Reordering rewrites every sibling's
+    // value with sequential integers (mirrors `canvasElements.zIndex`) rather
+    // than a fractional key — slide counts are small and reorders are
+    // click-driven, not a high-frequency path worth optimizing for.
+    orderIndex: integer("order_index").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at")
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    // Serves "list this project's slides in order" — the hot read once a
+    // project holds more than one slide.
+    index("canvases_project_id_order_index_idx").on(table.projectId, table.orderIndex),
+  ],
+);
 
 export const canvasElementTypeEnum = pgEnum("canvas_element_type", CANVAS_ELEMENT_TYPES);
 

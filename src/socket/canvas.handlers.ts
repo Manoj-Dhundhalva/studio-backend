@@ -9,6 +9,11 @@ import {
   joinPayloadSchema,
   leavePayloadSchema,
   selectionChangePayloadSchema,
+  slideActivatePayloadSchema,
+  slideCreatePayloadSchema,
+  slideDeletePayloadSchema,
+  slideDuplicatePayloadSchema,
+  slideReorderPayloadSchema,
 } from "@/modules/canvas/canvas.validation.js";
 import { canvasCacheService } from "@/services/canvas-cache.service.js";
 import { dbService } from "@/services/db.service.js";
@@ -88,7 +93,7 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
   socket.on("canvas:join", (rawPayload: unknown, ack): void => {
     void (async () => {
       try {
-        const { projectId } = joinPayloadSchema.parse(rawPayload);
+        const { projectId, activeCanvasId } = joinPayloadSchema.parse(rawPayload);
 
         const membership = await dbService.getProjectForUser(projectId, socket.data.user.userId);
 
@@ -103,15 +108,28 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
         socket.data.roles.set(projectId, membership.member.role);
         await socket.join(projectRoom(projectId));
 
-        const [canvas, elements] = await Promise.all([
-          canvasCacheService.getCanvas(projectId),
-          canvasCacheService.listElements(projectId),
-        ]);
+        const slides = await canvasCacheService.listSlides(projectId);
+        const firstSlide = slides[0];
+
+        if (!firstSlide) {
+          ack({ ok: false, code: SOCKET_ERROR_CODE.INTERNAL, error: "Project has no slides" });
+          return;
+        }
+
+        // Only trust the client's requested slide if it actually belongs to
+        // this project — otherwise fall back to the first slide by order.
+        const resolvedActiveCanvasId =
+          activeCanvasId && slides.some((slide) => slide.canvasId === activeCanvasId)
+            ? activeCanvasId
+            : firstSlide.canvasId;
+
+        const elements = await canvasCacheService.listElements(projectId, resolvedActiveCanvasId);
 
         ack({
           ok: true,
           data: {
-            canvas: toCanvasDto(canvas),
+            slides: slides.map(toCanvasDto),
+            activeCanvasId: resolvedActiveCanvasId,
             elements: elements.map(toElementDto),
             members: presenceRoster(projectId),
             accessibility: membership.member.role,
@@ -128,6 +146,119 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
       }
     })();
   });
+
+  socket.on(
+    "slide:activate",
+    guardRead(socket, "slide:activate", slideActivatePayloadSchema, async (context, payload, ack) => {
+      const hasSlide = await canvasCacheService.hasSlide(context.projectId, payload.canvasId);
+
+      if (!hasSlide) {
+        ack?.({ ok: false, code: SOCKET_ERROR_CODE.NOT_FOUND, error: "Slide not found" } as never);
+        return;
+      }
+
+      const elements = await canvasCacheService.listElements(context.projectId, payload.canvasId);
+
+      ack?.({ ok: true, data: { elements: elements.map(toElementDto) } } as never);
+    }),
+  );
+
+  socket.on(
+    "slide:create",
+    guardWrite(socket, "slide:create", slideCreatePayloadSchema, async (context, payload, ack) => {
+      if (payload.afterCanvasId) {
+        const hasAfter = await canvasCacheService.hasSlide(context.projectId, payload.afterCanvasId);
+
+        if (!hasAfter) {
+          ack?.({ ok: false, code: SOCKET_ERROR_CODE.NOT_FOUND, error: "Reference slide not found" } as never);
+          return;
+        }
+      }
+
+      const { canvas, order } = await canvasCacheService.createSlide(
+        context.projectId,
+        payload.canvasId,
+        payload.afterCanvasId,
+      );
+      const dto = toCanvasDto(canvas);
+
+      ack?.({ ok: true, data: { slide: dto, order } } as never);
+
+      socket.to(projectRoom(context.projectId)).emit("slide:created", {
+        projectId: context.projectId,
+        socketId: socket.id,
+        slide: dto,
+        order,
+      });
+    }),
+  );
+
+  socket.on(
+    "slide:duplicate",
+    guardWrite(socket, "slide:duplicate", slideDuplicatePayloadSchema, async (context, payload, ack) => {
+      const result = await canvasCacheService.duplicateSlide(context.projectId, payload.canvasId);
+
+      if (!result) {
+        ack?.({ ok: false, code: SOCKET_ERROR_CODE.NOT_FOUND, error: "Slide not found" } as never);
+        return;
+      }
+
+      const slideDto = toCanvasDto(result.canvas);
+      const elementDtos = result.elements.map(toElementDto);
+
+      ack?.({ ok: true, data: { slide: slideDto, elements: elementDtos, order: result.order } } as never);
+
+      socket.to(projectRoom(context.projectId)).emit("slide:duplicated", {
+        projectId: context.projectId,
+        socketId: socket.id,
+        slide: slideDto,
+        elements: elementDtos,
+        order: result.order,
+      });
+    }),
+  );
+
+  socket.on(
+    "slide:reorder",
+    guardWrite(socket, "slide:reorder", slideReorderPayloadSchema, async (context, payload, ack) => {
+      const applied = await canvasCacheService.reorderSlides(context.projectId, payload.order);
+
+      ack?.({ ok: true, data: { order: applied } } as never);
+
+      if (applied.length > 0) {
+        socket
+          .to(projectRoom(context.projectId))
+          .emit("slide:reordered", { projectId: context.projectId, socketId: socket.id, order: applied });
+      }
+    }),
+  );
+
+  socket.on(
+    "slide:delete",
+    guardWrite(socket, "slide:delete", slideDeletePayloadSchema, async (context, payload, ack) => {
+      const outcome = await canvasCacheService.deleteSlide(context.projectId, payload.canvasId);
+
+      if (outcome.status === "not-found") {
+        ack?.({ ok: false, code: SOCKET_ERROR_CODE.NOT_FOUND, error: "Slide not found" } as never);
+        return;
+      }
+
+      if (outcome.status === "last-slide") {
+        ack?.({
+          ok: false,
+          code: SOCKET_ERROR_CODE.INVALID_OPERATION,
+          error: "A project must have at least one slide",
+        } as never);
+        return;
+      }
+
+      ack?.({ ok: true, data: { canvasId: payload.canvasId } } as never);
+
+      socket
+        .to(projectRoom(context.projectId))
+        .emit("slide:deleted", { projectId: context.projectId, socketId: socket.id, canvasId: payload.canvasId });
+    }),
+  );
 
   socket.on("canvas:leave", (rawPayload: unknown): void => {
     void (async () => {
@@ -170,7 +301,14 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
   socket.on(
     "element:create",
     guardWrite(socket, "element:create", elementCreatePayloadSchema, async (context, payload, ack) => {
-      const count = await canvasCacheService.countElements(context.projectId);
+      const hasSlide = await canvasCacheService.hasSlide(context.projectId, payload.canvasId);
+
+      if (!hasSlide) {
+        ack?.({ ok: false, code: SOCKET_ERROR_CODE.NOT_FOUND, error: "Slide not found" } as never);
+        return;
+      }
+
+      const count = await canvasCacheService.countElements(context.projectId, payload.canvasId);
 
       if (count >= env.MAX_ELEMENTS_PER_CANVAS) {
         ack?.({
@@ -181,7 +319,12 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
         return;
       }
 
-      const element = await canvasCacheService.createElement(context.projectId, payload.element, context.userId);
+      const element = await canvasCacheService.createElement(
+        context.projectId,
+        payload.canvasId,
+        payload.element,
+        context.userId,
+      );
 
       if (!element) {
         ack?.({
@@ -196,9 +339,12 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
 
       ack?.({ ok: true, data: { element: dto } } as never);
 
-      socket
-        .to(projectRoom(context.projectId))
-        .emit("element:created", { projectId: context.projectId, socketId: socket.id, element: dto });
+      socket.to(projectRoom(context.projectId)).emit("element:created", {
+        projectId: context.projectId,
+        canvasId: payload.canvasId,
+        socketId: socket.id,
+        element: dto,
+      });
     }),
   );
 
@@ -207,6 +353,7 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
     guardWrite(socket, "element:update", elementUpdatePayloadSchema, async (context, payload, ack) => {
       const outcome = await canvasCacheService.applyPatch(
         context.projectId,
+        payload.canvasId,
         payload.elementId,
         payload.baseVersion,
         payload.patch,
@@ -225,7 +372,11 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
           code: SOCKET_ERROR_CODE.VERSION_CONFLICT,
           error: "Element changed since your last update",
         } as never);
-        socket.emit("element:synced", { projectId: context.projectId, element: toElementDto(outcome.element) });
+        socket.emit("element:synced", {
+          projectId: context.projectId,
+          canvasId: payload.canvasId,
+          element: toElementDto(outcome.element),
+        });
         return;
       }
 
@@ -233,6 +384,7 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
 
       socket.to(projectRoom(context.projectId)).emit("element:updated", {
         projectId: context.projectId,
+        canvasId: payload.canvasId,
         socketId: socket.id,
         elementId: payload.elementId,
         version: outcome.version,
@@ -244,14 +396,17 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
   socket.on(
     "element:delete",
     guardWrite(socket, "element:delete", elementDeletePayloadSchema, async (context, payload, ack) => {
-      const removed = await canvasCacheService.deleteElements(context.projectId, payload.elementIds);
+      const removed = await canvasCacheService.deleteElements(context.projectId, payload.canvasId, payload.elementIds);
 
       ack?.({ ok: true, data: { elementIds: removed } } as never);
 
       if (removed.length > 0) {
-        socket
-          .to(projectRoom(context.projectId))
-          .emit("element:deleted", { projectId: context.projectId, socketId: socket.id, elementIds: removed });
+        socket.to(projectRoom(context.projectId)).emit("element:deleted", {
+          projectId: context.projectId,
+          canvasId: payload.canvasId,
+          socketId: socket.id,
+          elementIds: removed,
+        });
       }
     }),
   );
@@ -259,14 +414,17 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
   socket.on(
     "element:reorder",
     guardWrite(socket, "element:reorder", elementReorderPayloadSchema, async (context, payload, ack) => {
-      const applied = await canvasCacheService.reorderElements(context.projectId, payload.order);
+      const applied = await canvasCacheService.reorderElements(context.projectId, payload.canvasId, payload.order);
 
       ack?.({ ok: true, data: { order: applied } } as never);
 
       if (applied.length > 0) {
-        socket
-          .to(projectRoom(context.projectId))
-          .emit("element:reordered", { projectId: context.projectId, socketId: socket.id, order: applied });
+        socket.to(projectRoom(context.projectId)).emit("element:reordered", {
+          projectId: context.projectId,
+          canvasId: payload.canvasId,
+          socketId: socket.id,
+          order: applied,
+        });
       }
     }),
   );
@@ -274,8 +432,16 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
   socket.on(
     "canvas:resize",
     guardWrite(socket, "canvas:resize", canvasResizePayloadSchema, async (context, payload, ack) => {
+      const hasSlide = await canvasCacheService.hasSlide(context.projectId, payload.canvasId);
+
+      if (!hasSlide) {
+        ack?.({ ok: false, code: SOCKET_ERROR_CODE.NOT_FOUND, error: "Slide not found" } as never);
+        return;
+      }
+
       const canvas = await canvasCacheService.resizeCanvas(
         context.projectId,
+        payload.canvasId,
         payload.width,
         payload.height,
         payload.aspectRatioPreset,
@@ -285,9 +451,12 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
 
       ack?.({ ok: true, data: { canvas: dto } } as never);
 
-      socket
-        .to(projectRoom(context.projectId))
-        .emit("canvas:resized", { projectId: context.projectId, socketId: socket.id, canvas: dto });
+      socket.to(projectRoom(context.projectId)).emit("canvas:resized", {
+        projectId: context.projectId,
+        canvasId: payload.canvasId,
+        socketId: socket.id,
+        canvas: dto,
+      });
     }),
   );
 

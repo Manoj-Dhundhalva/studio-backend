@@ -78,8 +78,12 @@ export const elementPatchSchema = z
 // ------------------------------------------------------------ socket payloads
 
 const projectScoped = { projectId: z.uuid() };
+const canvasScoped = { ...projectScoped, canvasId: z.uuid() };
 
-export const joinPayloadSchema = z.object(projectScoped);
+export const joinPayloadSchema = z.object({
+  ...projectScoped,
+  activeCanvasId: z.uuid().optional(),
+});
 
 export const leavePayloadSchema = z.object(projectScoped);
 
@@ -94,25 +98,51 @@ export const selectionChangePayloadSchema = z.object({
   elementIds: z.array(z.uuid()).max(500),
 });
 
-export const elementCreatePayloadSchema = z.object({
+export const slideActivatePayloadSchema = z.object(canvasScoped);
+
+export const slideCreatePayloadSchema = z.object({
   ...projectScoped,
+  canvasId: z.uuid(),
+  afterCanvasId: z.uuid().optional(),
+});
+
+/** `canvasId` is the slide being copied — the new slide's id is server-minted. */
+export const slideDuplicatePayloadSchema = z.object(canvasScoped);
+
+export const slideReorderPayloadSchema = z.object({
+  ...projectScoped,
+  order: z
+    .array(
+      z.object({
+        canvasId: z.uuid(),
+        orderIndex: z.number().int(),
+      }),
+    )
+    .min(1)
+    .max(1000),
+});
+
+export const slideDeletePayloadSchema = z.object(canvasScoped);
+
+export const elementCreatePayloadSchema = z.object({
+  ...canvasScoped,
   element: elementCreateInputSchema,
 });
 
 export const elementUpdatePayloadSchema = z.object({
-  ...projectScoped,
+  ...canvasScoped,
   elementId: z.uuid(),
   baseVersion: z.number().int().nonnegative(),
   patch: elementPatchSchema,
 });
 
 export const elementDeletePayloadSchema = z.object({
-  ...projectScoped,
+  ...canvasScoped,
   elementIds: z.array(z.uuid()).min(1).max(500),
 });
 
 export const elementReorderPayloadSchema = z.object({
-  ...projectScoped,
+  ...canvasScoped,
   order: z
     .array(
       z.object({
@@ -125,7 +155,7 @@ export const elementReorderPayloadSchema = z.object({
 });
 
 export const canvasResizePayloadSchema = z.object({
-  ...projectScoped,
+  ...canvasScoped,
   width: z.number().int().min(CANVAS_MIN_DIMENSION).max(CANVAS_MAX_DIMENSION),
   height: z.number().int().min(CANVAS_MIN_DIMENSION).max(CANVAS_MAX_DIMENSION),
   aspectRatioPreset: z.enum(Object.values(ASPECT_RATIO_PRESETS)),
@@ -136,6 +166,13 @@ export const canvasResizePayloadSchema = z.object({
 // `projectId` params reuse `project.validation.ts`'s `projectIdParamsSchema` —
 // the canvas routes are registered on the project router, so there is one
 // schema for that param, not two that can drift.
+
+export const canvasIdParamsSchema = z.object({
+  projectId: z.uuid("Invalid project id"),
+  canvasId: z.uuid("Invalid canvas id"),
+});
+
+export type CanvasIdParams = z.infer<typeof canvasIdParamsSchema>;
 
 export const updateCanvasSchema = z
   .object({
@@ -149,3 +186,23 @@ export const updateCanvasSchema = z
   });
 
 export type UpdateCanvasBody = z.infer<typeof updateCanvasSchema>;
+
+export const createSlideRestSchema = z.object({
+  afterCanvasId: z.uuid().optional(),
+});
+
+export type CreateSlideBody = z.infer<typeof createSlideRestSchema>;
+
+export const reorderSlidesRestSchema = z.object({
+  order: z
+    .array(
+      z.object({
+        canvasId: z.uuid(),
+        orderIndex: z.number().int(),
+      }),
+    )
+    .min(1)
+    .max(1000),
+});
+
+export type ReorderSlidesBody = z.infer<typeof reorderSlidesRestSchema>;

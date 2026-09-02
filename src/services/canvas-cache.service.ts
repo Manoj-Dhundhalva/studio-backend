@@ -1,27 +1,39 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { db } from "@/db/connection.js";
 import { canvasElements, canvases } from "@/db/schema.js";
 import { CacheService } from "@/services/cache.service.js";
 import type { Canvas, CanvasElement, NewCanvasElement } from "@/services/db.service.js";
-import type { TElementCreateInput, TElementOrderEntry, TElementPatch } from "@/socket/socket.types.js";
+import type { TElementCreateInput, TElementOrderEntry, TElementPatch, TSlideOrderEntry } from "@/socket/socket.types.js";
 import type { TAspectRatioPreset } from "@/types/canvas.types.js";
 import { env } from "@/config/env.js";
 
 /**
- * Live state for one project's canvas.
+ * Live state for one slide (one `canvases` row).
  *
  * `elements` is the authoritative copy while anyone is editing — reads are
- * served from here, and the DB only ever sees the coalesced result of a flush.
+ * served from here, and the DB only ever sees the coalesced result of a
+ * flush. `null` means the slide's metadata is known (from the project-level
+ * hydration) but its elements haven't been loaded yet — deferred until
+ * something actually needs them, so joining a project with many slides only
+ * pays for the elements of the one slide being viewed.
  */
-type TProjectCanvasState = {
+type TSlideState = {
   canvas: Canvas;
   isCanvasDirty: boolean;
-  elements: Map<string, CanvasElement>;
+  elements: Map<string, CanvasElement> | null;
   /** Element ids created or modified since the last successful flush. */
   dirty: Set<string>;
   /** Element ids soft-deleted since the last successful flush. */
   deleted: Set<string>;
+};
+
+/** Live state for one project: every slide, in order. */
+type TProjectState = {
+  /** Keyed by canvasId. */
+  slides: Map<string, TSlideState>;
+  /** canvasId order, mirrors each slide's `orderIndex` ascending. */
+  order: string[];
   lastAccessAt: number;
 };
 
@@ -34,19 +46,27 @@ export type TPatchOutcome =
   | { status: "stale"; element: CanvasElement }
   | { status: "missing" };
 
+/** Returned by `deleteSlide`. */
+export type TDeleteSlideOutcome = { status: "deleted" } | { status: "last-slide" } | { status: "not-found" };
+
 /**
- * Holds every actively-edited canvas in memory and bulk-writes the dirty rows
- * to Postgres on an interval.
+ * Holds every actively-edited project (and its slides) in memory and
+ * bulk-writes the dirty rows to Postgres on an interval.
  *
  * The point of the interval is write amplification: dragging a shape emits an
  * update per animation frame, and writing each one would mean ~60 UPDATEs a
  * second per dragging user. Here a mutation is a `Map.set`, and a whole drag
  * collapses into one row write per flush window.
+ *
+ * Slide-structural changes (create/duplicate/reorder/delete a slide) are the
+ * opposite: low-frequency and click-driven, so they write to Postgres
+ * synchronously instead of going through this deferred cycle — losing one
+ * silently would visibly break a deck, unlike a dropped drag frame.
  */
 export class CanvasCacheService {
   private static instance: CanvasCacheService;
 
-  private readonly cache = new CacheService<string, TProjectCanvasState>();
+  private readonly cache = new CacheService<string, TProjectState>();
 
   private flushTimer: NodeJS.Timeout | null = null;
 
@@ -56,8 +76,11 @@ export class CanvasCacheService {
    */
   private isFlushing = false;
 
-  /** In-flight hydrations, so two simultaneous joins don't both read the DB. */
-  private readonly hydrating = new Map<string, Promise<TProjectCanvasState>>();
+  /** In-flight project hydrations, so two simultaneous joins don't both read the DB. */
+  private readonly hydratingProject = new Map<string, Promise<TProjectState>>();
+
+  /** In-flight per-slide element hydrations, keyed by canvasId. */
+  private readonly hydratingElements = new Map<string, Promise<Map<string, CanvasElement>>>();
 
   private constructor() {}
 
@@ -95,10 +118,11 @@ export class CanvasCacheService {
   // ---------------------------------------------------------------- hydration
 
   /**
-   * Loads a project's canvas into memory on first access; every later read is
-   * served from the Map. Concurrent callers share one DB round-trip.
+   * Loads a project's slides (metadata only, no elements) into memory on
+   * first access; every later read is served from the Map. Concurrent
+   * callers share one DB round-trip.
    */
-  async getOrHydrate(projectId: string): Promise<TProjectCanvasState> {
+  async getOrHydrateProject(projectId: string): Promise<TProjectState> {
     const cached = this.cache.get(projectId);
 
     if (cached) {
@@ -106,37 +130,39 @@ export class CanvasCacheService {
       return cached;
     }
 
-    const inFlight = this.hydrating.get(projectId);
+    const inFlight = this.hydratingProject.get(projectId);
 
     if (inFlight) {
       return inFlight;
     }
 
-    const hydration = this.hydrate(projectId).finally(() => {
-      this.hydrating.delete(projectId);
+    const hydration = this.hydrateProject(projectId).finally(() => {
+      this.hydratingProject.delete(projectId);
     });
 
-    this.hydrating.set(projectId, hydration);
+    this.hydratingProject.set(projectId, hydration);
 
     return hydration;
   }
 
-  private async hydrate(projectId: string): Promise<TProjectCanvasState> {
-    const canvas = await this.findOrCreateCanvas(projectId);
+  private async hydrateProject(projectId: string): Promise<TProjectState> {
+    const rows = await this.findOrCreateSlideRows(projectId);
 
-    const rows = await db
-      .select()
-      .from(canvasElements)
-      .where(and(eq(canvasElements.canvasId, canvas.canvasId), isNull(canvasElements.deletedAt)));
+    const slides = new Map<string, TSlideState>();
+    const order: string[] = [];
 
-    const state: TProjectCanvasState = {
-      canvas,
-      isCanvasDirty: false,
-      elements: new Map(rows.map((row) => [row.elementId, row])),
-      dirty: new Set(),
-      deleted: new Set(),
-      lastAccessAt: Date.now(),
-    };
+    for (const canvas of rows) {
+      slides.set(canvas.canvasId, {
+        canvas,
+        isCanvasDirty: false,
+        elements: null,
+        dirty: new Set(),
+        deleted: new Set(),
+      });
+      order.push(canvas.canvasId);
+    }
+
+    const state: TProjectState = { slides, order, lastAccessAt: Date.now() };
 
     this.cache.set(projectId, state);
 
@@ -145,71 +171,356 @@ export class CanvasCacheService {
 
   /**
    * `createProject` seeds a canvas row, so this only actually inserts for
-   * projects that predate that. `onConflictDoNothing` + re-select keeps it safe
-   * if two sockets join such a project at the same moment.
+   * projects that predate that — a safety net, not the general path. Returns
+   * every slide ordered. `onConflictDoNothing` + re-select keeps it safe if
+   * two sockets join such a project at the same moment; the in-flight
+   * `hydratingProject` promise-sharing above already prevents this within one
+   * process, so this is defence in depth, not the primary guard.
    */
-  private async findOrCreateCanvas(projectId: string): Promise<Canvas> {
-    const [existing] = await db.select().from(canvases).where(eq(canvases.projectId, projectId)).limit(1);
+  private async findOrCreateSlideRows(projectId: string): Promise<Canvas[]> {
+    const existing = await db
+      .select()
+      .from(canvases)
+      .where(eq(canvases.projectId, projectId))
+      .orderBy(asc(canvases.orderIndex));
 
-    if (existing) {
+    if (existing.length > 0) {
       return existing;
     }
 
     const [created] = await db.insert(canvases).values({ projectId }).onConflictDoNothing().returning();
 
     if (created) {
-      return created;
+      return [created];
     }
 
-    const [raced] = await db.select().from(canvases).where(eq(canvases.projectId, projectId)).limit(1);
+    const raced = await db
+      .select()
+      .from(canvases)
+      .where(eq(canvases.projectId, projectId))
+      .orderBy(asc(canvases.orderIndex));
 
-    if (!raced) {
+    if (raced.length === 0) {
       throw new Error(`Failed to create canvas for project ${projectId}`);
     }
 
     return raced;
   }
 
+  /**
+   * Resolves one slide with its elements guaranteed hydrated. `null` means
+   * `canvasId` doesn't belong to `projectId` (stale/guessed id, or a
+   * concurrent delete) — every caller treats that as "nothing to do" rather
+   * than throwing, since the socket handlers already check `hasSlide` up
+   * front and turn that into a proper `NOT_FOUND` ack.
+   */
+  private async resolveSlide(
+    projectId: string,
+    canvasId: string,
+  ): Promise<{ project: TProjectState; slide: TSlideState; elements: Map<string, CanvasElement> } | null> {
+    const project = await this.getOrHydrateProject(projectId);
+    const slide = project.slides.get(canvasId);
+
+    if (!slide) {
+      return null;
+    }
+
+    if (slide.elements === null) {
+      const inFlight = this.hydratingElements.get(canvasId);
+      const pending = inFlight ?? this.hydrateSlideElements(canvasId);
+
+      if (!inFlight) {
+        this.hydratingElements.set(
+          canvasId,
+          pending.finally(() => this.hydratingElements.delete(canvasId)),
+        );
+      }
+
+      slide.elements = await pending;
+    }
+
+    project.lastAccessAt = Date.now();
+
+    return { project, slide, elements: slide.elements };
+  }
+
+  private async hydrateSlideElements(canvasId: string): Promise<Map<string, CanvasElement>> {
+    const rows = await db
+      .select()
+      .from(canvasElements)
+      .where(and(eq(canvasElements.canvasId, canvasId), isNull(canvasElements.deletedAt)));
+
+    return new Map(rows.map((row) => [row.elementId, row]));
+  }
+
+  // ------------------------------------------------------------------ slides
+
+  async hasSlide(projectId: string, canvasId: string): Promise<boolean> {
+    const project = await this.getOrHydrateProject(projectId);
+
+    return project.slides.has(canvasId);
+  }
+
+  /** Lightweight — metadata only, for the strip. No element hydration. */
+  async listSlides(projectId: string): Promise<Canvas[]> {
+    const project = await this.getOrHydrateProject(projectId);
+
+    return project.order.map((canvasId) => project.slides.get(canvasId)!.canvas);
+  }
+
+  /**
+   * Inserts a new blank slide at the given position (default: end), copying
+   * dimensions/background from `afterCanvasId`'s slide (or the project's
+   * first slide) so a new slide isn't a mismatched size. `canvasId` is
+   * client-minted — mirrors `TElementCreateInput.elementId` — so the client
+   * can render the new thumbnail optimistically, before the ack.
+   */
+  async createSlide(
+    projectId: string,
+    canvasId: string,
+    afterCanvasId?: string,
+  ): Promise<{ canvas: Canvas; order: TSlideOrderEntry[] }> {
+    const project = await this.getOrHydrateProject(projectId);
+
+    const afterIndex = afterCanvasId ? project.order.indexOf(afterCanvasId) : project.order.length - 1;
+    const insertPosition = afterIndex === -1 ? project.order.length : afterIndex + 1;
+    const referenceId = project.order[insertPosition - 1] ?? project.order[0];
+    const reference = referenceId ? project.slides.get(referenceId) : undefined;
+
+    const nextOrder = [...project.order];
+    nextOrder.splice(insertPosition, 0, canvasId);
+
+    const now = new Date();
+    const newCanvas: Canvas = {
+      canvasId,
+      projectId,
+      width: reference?.canvas.width ?? 1080,
+      height: reference?.canvas.height ?? 1080,
+      aspectRatioPreset: reference?.canvas.aspectRatioPreset ?? null,
+      backgroundColor: reference?.canvas.backgroundColor ?? "#ffffff",
+      version: 0,
+      orderIndex: insertPosition,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await db.transaction(async (tx) => {
+      await tx.insert(canvases).values(newCanvas);
+
+      for (const [index, id] of nextOrder.entries()) {
+        await tx.update(canvases).set({ orderIndex: index }).where(eq(canvases.canvasId, id));
+      }
+    });
+
+    project.slides.set(canvasId, {
+      canvas: newCanvas,
+      isCanvasDirty: false,
+      elements: new Map(),
+      dirty: new Set(),
+      deleted: new Set(),
+    });
+    project.order = nextOrder;
+    this.reindexSlides(project, nextOrder);
+    project.lastAccessAt = Date.now();
+
+    return {
+      canvas: project.slides.get(canvasId)!.canvas,
+      order: nextOrder.map((id, index) => ({ canvasId: id, orderIndex: index })),
+    };
+  }
+
+  /**
+   * Deep-copies a slide: new canvas row placed right after the source, plus
+   * every live element with fresh server-minted ids. Reads the source from
+   * the live cache (hydrating it if needed), not straight from Postgres —
+   * the cache is authoritative for anything mid-edit, same reasoning as
+   * `getCanvas`'s REST fallback.
+   */
+  async duplicateSlide(
+    projectId: string,
+    sourceCanvasId: string,
+  ): Promise<{ canvas: Canvas; elements: CanvasElement[]; order: TSlideOrderEntry[] } | null> {
+    const resolved = await this.resolveSlide(projectId, sourceCanvasId);
+
+    if (!resolved) {
+      return null;
+    }
+
+    const { project, slide: sourceSlide, elements: sourceElements } = resolved;
+
+    const newCanvasId = crypto.randomUUID();
+    const insertPosition = project.order.indexOf(sourceCanvasId) + 1;
+    const nextOrder = [...project.order];
+    nextOrder.splice(insertPosition, 0, newCanvasId);
+
+    const now = new Date();
+    const newCanvas: Canvas = {
+      ...sourceSlide.canvas,
+      canvasId: newCanvasId,
+      version: 0,
+      orderIndex: insertPosition,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const copiedElements: CanvasElement[] = [...sourceElements.values()].map((element) => ({
+      ...element,
+      elementId: crypto.randomUUID(),
+      canvasId: newCanvasId,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+    await db.transaction(async (tx) => {
+      await tx.insert(canvases).values(newCanvas);
+
+      if (copiedElements.length > 0) {
+        await tx.insert(canvasElements).values(copiedElements);
+      }
+
+      for (const [index, id] of nextOrder.entries()) {
+        await tx.update(canvases).set({ orderIndex: index }).where(eq(canvases.canvasId, id));
+      }
+    });
+
+    project.slides.set(newCanvasId, {
+      canvas: newCanvas,
+      isCanvasDirty: false,
+      elements: new Map(copiedElements.map((element) => [element.elementId, element])),
+      dirty: new Set(),
+      deleted: new Set(),
+    });
+    project.order = nextOrder;
+    this.reindexSlides(project, nextOrder);
+    project.lastAccessAt = Date.now();
+
+    return {
+      canvas: project.slides.get(newCanvasId)!.canvas,
+      elements: copiedElements,
+      order: nextOrder.map((id, index) => ({ canvasId: id, orderIndex: index })),
+    };
+  }
+
+  /** Same shape as `reorderElements`: caller sends the full new order, server writes it verbatim. */
+  async reorderSlides(projectId: string, order: TSlideOrderEntry[]): Promise<TSlideOrderEntry[]> {
+    const project = await this.getOrHydrateProject(projectId);
+    const applied = order.filter((entry) => project.slides.has(entry.canvasId));
+
+    if (applied.length === 0) {
+      return [];
+    }
+
+    await db.transaction(async (tx) => {
+      for (const entry of applied) {
+        await tx.update(canvases).set({ orderIndex: entry.orderIndex }).where(eq(canvases.canvasId, entry.canvasId));
+      }
+    });
+
+    for (const entry of applied) {
+      const slide = project.slides.get(entry.canvasId);
+
+      if (slide) {
+        slide.canvas = { ...slide.canvas, orderIndex: entry.orderIndex };
+      }
+    }
+
+    project.order = [...project.slides.keys()].sort(
+      (a, b) => (project.slides.get(a)?.canvas.orderIndex ?? 0) - (project.slides.get(b)?.canvas.orderIndex ?? 0),
+    );
+    project.lastAccessAt = Date.now();
+
+    return applied;
+  }
+
+  /**
+   * Hard-deletes the canvas row (cascades to `canvas_elements` via the
+   * existing FK). Rejects if this is the project's only remaining slide — a
+   * project must always have at least one, mirroring `createProject` seeding
+   * exactly one canvas so a project can never exist without one.
+   */
+  async deleteSlide(projectId: string, canvasId: string): Promise<TDeleteSlideOutcome> {
+    const project = await this.getOrHydrateProject(projectId);
+
+    if (!project.slides.has(canvasId)) {
+      return { status: "not-found" };
+    }
+
+    if (project.order.length <= 1) {
+      return { status: "last-slide" };
+    }
+
+    await db.delete(canvases).where(eq(canvases.canvasId, canvasId));
+
+    project.slides.delete(canvasId);
+    project.order = project.order.filter((id) => id !== canvasId);
+    project.lastAccessAt = Date.now();
+
+    return { status: "deleted" };
+  }
+
+  /** Renumbers every slide's in-memory `orderIndex` to match its position in `order`. */
+  private reindexSlides(project: TProjectState, order: string[]): void {
+    order.forEach((canvasId, index) => {
+      const slide = project.slides.get(canvasId);
+
+      if (slide) {
+        slide.canvas = { ...slide.canvas, orderIndex: index };
+      }
+    });
+  }
+
   // ---------------------------------------------------------------- mutations
 
-  async listElements(projectId: string): Promise<CanvasElement[]> {
-    const state = await this.getOrHydrate(projectId);
+  async listElements(projectId: string, canvasId: string): Promise<CanvasElement[]> {
+    const resolved = await this.resolveSlide(projectId, canvasId);
 
-    return [...state.elements.values()].sort((left, right) => left.zIndex - right.zIndex);
+    if (!resolved) {
+      return [];
+    }
+
+    return [...resolved.elements.values()].sort((left, right) => left.zIndex - right.zIndex);
   }
 
-  async getCanvas(projectId: string): Promise<Canvas> {
-    const state = await this.getOrHydrate(projectId);
+  async getCanvas(projectId: string, canvasId: string): Promise<Canvas | null> {
+    const project = await this.getOrHydrateProject(projectId);
 
-    return state.canvas;
+    return project.slides.get(canvasId)?.canvas ?? null;
   }
 
-  async countElements(projectId: string): Promise<number> {
-    const state = await this.getOrHydrate(projectId);
+  async countElements(projectId: string, canvasId: string): Promise<number> {
+    const resolved = await this.resolveSlide(projectId, canvasId);
 
-    return state.elements.size;
+    return resolved ? resolved.elements.size : 0;
   }
 
-  /** `null` means the client reused an id that already exists on this canvas. */
+  /** `null` means the client reused an id that already exists on this canvas, or the slide doesn't exist. */
   async createElement(
     projectId: string,
+    canvasId: string,
     input: TElementCreateInput,
     createdBy: string,
   ): Promise<CanvasElement | null> {
-    const state = await this.getOrHydrate(projectId);
+    const resolved = await this.resolveSlide(projectId, canvasId);
 
-    if (state.elements.has(input.elementId)) {
+    if (!resolved) {
+      return null;
+    }
+
+    const { project, slide, elements } = resolved;
+
+    if (elements.has(input.elementId)) {
       return null;
     }
 
     // New elements go on top. Computed from the live Map, not a DB max(), so a
     // burst of inserts inside one flush window still stacks correctly.
-    const topZIndex = [...state.elements.values()].reduce((max, element) => Math.max(max, element.zIndex), -1);
+    const topZIndex = [...elements.values()].reduce((max, element) => Math.max(max, element.zIndex), -1);
 
     const now = new Date();
     const element: CanvasElement = {
       elementId: input.elementId,
-      canvasId: state.canvas.canvasId,
+      canvasId: slide.canvas.canvasId,
       type: input.type,
       x: input.x,
       y: input.y,
@@ -230,9 +541,9 @@ export class CanvasCacheService {
       updatedAt: now,
     };
 
-    state.elements.set(element.elementId, element);
-    state.dirty.add(element.elementId);
-    state.lastAccessAt = Date.now();
+    elements.set(element.elementId, element);
+    slide.dirty.add(element.elementId);
+    project.lastAccessAt = Date.now();
 
     return element;
   }
@@ -244,12 +555,19 @@ export class CanvasCacheService {
    */
   async applyPatch(
     projectId: string,
+    canvasId: string,
     elementId: string,
     baseVersion: number,
     patch: TElementPatch,
   ): Promise<TPatchOutcome> {
-    const state = await this.getOrHydrate(projectId);
-    const existing = state.elements.get(elementId);
+    const resolved = await this.resolveSlide(projectId, canvasId);
+
+    if (!resolved) {
+      return { status: "missing" };
+    }
+
+    const { project, slide, elements } = resolved;
+    const existing = elements.get(elementId);
 
     if (!existing) {
       return { status: "missing" };
@@ -279,95 +597,118 @@ export class CanvasCacheService {
       updatedAt: new Date(),
     };
 
-    state.elements.set(elementId, merged);
-    state.dirty.add(elementId);
-    state.lastAccessAt = Date.now();
+    elements.set(elementId, merged);
+    slide.dirty.add(elementId);
+    project.lastAccessAt = Date.now();
 
     return { status: "applied", version: merged.version };
   }
 
-  async deleteElements(projectId: string, elementIds: string[]): Promise<string[]> {
-    const state = await this.getOrHydrate(projectId);
+  async deleteElements(projectId: string, canvasId: string, elementIds: string[]): Promise<string[]> {
+    const resolved = await this.resolveSlide(projectId, canvasId);
+
+    if (!resolved) {
+      return [];
+    }
+
+    const { project, slide, elements } = resolved;
     const removed: string[] = [];
 
     for (const elementId of elementIds) {
-      if (!state.elements.delete(elementId)) {
+      if (!elements.delete(elementId)) {
         continue;
       }
 
       removed.push(elementId);
       // Drop from `dirty` — a row that is about to be marked deleted has no
       // business also being upserted in the same flush.
-      state.dirty.delete(elementId);
-      state.deleted.add(elementId);
+      slide.dirty.delete(elementId);
+      slide.deleted.add(elementId);
     }
 
-    state.lastAccessAt = Date.now();
+    project.lastAccessAt = Date.now();
 
     return removed;
   }
 
-  async reorderElements(projectId: string, order: TElementOrderEntry[]): Promise<TElementOrderEntry[]> {
-    const state = await this.getOrHydrate(projectId);
+  async reorderElements(projectId: string, canvasId: string, order: TElementOrderEntry[]): Promise<TElementOrderEntry[]> {
+    const resolved = await this.resolveSlide(projectId, canvasId);
+
+    if (!resolved) {
+      return [];
+    }
+
+    const { project, slide, elements } = resolved;
     const applied: TElementOrderEntry[] = [];
 
     for (const entry of order) {
-      const existing = state.elements.get(entry.elementId);
+      const existing = elements.get(entry.elementId);
 
       if (!existing) {
         continue;
       }
 
-      state.elements.set(entry.elementId, {
+      elements.set(entry.elementId, {
         ...existing,
         zIndex: entry.zIndex,
         version: existing.version + 1,
         updatedAt: new Date(),
       });
-      state.dirty.add(entry.elementId);
+      slide.dirty.add(entry.elementId);
       applied.push(entry);
     }
 
-    state.lastAccessAt = Date.now();
+    project.lastAccessAt = Date.now();
 
     return applied;
   }
 
   async resizeCanvas(
     projectId: string,
+    canvasId: string,
     width: number,
     height: number,
     aspectRatioPreset: TAspectRatioPreset,
   ): Promise<Canvas> {
-    const state = await this.getOrHydrate(projectId);
+    const project = await this.getOrHydrateProject(projectId);
+    const slide = project.slides.get(canvasId);
 
-    state.canvas = {
-      ...state.canvas,
+    if (!slide) {
+      throw new Error(`Slide ${canvasId} not found in project ${projectId}`);
+    }
+
+    slide.canvas = {
+      ...slide.canvas,
       width,
       height,
       aspectRatioPreset,
-      version: state.canvas.version + 1,
+      version: slide.canvas.version + 1,
       updatedAt: new Date(),
     };
-    state.isCanvasDirty = true;
-    state.lastAccessAt = Date.now();
+    slide.isCanvasDirty = true;
+    project.lastAccessAt = Date.now();
 
-    return state.canvas;
+    return slide.canvas;
   }
 
-  async setBackgroundColor(projectId: string, backgroundColor: string): Promise<Canvas> {
-    const state = await this.getOrHydrate(projectId);
+  async setBackgroundColor(projectId: string, canvasId: string, backgroundColor: string): Promise<Canvas> {
+    const project = await this.getOrHydrateProject(projectId);
+    const slide = project.slides.get(canvasId);
 
-    state.canvas = {
-      ...state.canvas,
+    if (!slide) {
+      throw new Error(`Slide ${canvasId} not found in project ${projectId}`);
+    }
+
+    slide.canvas = {
+      ...slide.canvas,
       backgroundColor,
-      version: state.canvas.version + 1,
+      version: slide.canvas.version + 1,
       updatedAt: new Date(),
     };
-    state.isCanvasDirty = true;
-    state.lastAccessAt = Date.now();
+    slide.isCanvasDirty = true;
+    project.lastAccessAt = Date.now();
 
-    return state.canvas;
+    return slide.canvas;
   }
 
   // ------------------------------------------------------------------- flush
@@ -388,29 +729,35 @@ export class CanvasCacheService {
     }
   }
 
-  async flushProject(projectId: string, state?: TProjectCanvasState): Promise<void> {
+  async flushProject(projectId: string, state?: TProjectState): Promise<void> {
     const target = state ?? this.cache.get(projectId);
 
     if (!target) {
       return;
     }
 
-    if (!target.isCanvasDirty && target.dirty.size === 0 && target.deleted.size === 0) {
+    for (const [canvasId, slide] of target.slides) {
+      await this.flushSlide(canvasId, slide);
+    }
+  }
+
+  private async flushSlide(canvasId: string, slide: TSlideState): Promise<void> {
+    if (!slide.isCanvasDirty && slide.dirty.size === 0 && slide.deleted.size === 0) {
       return;
     }
 
     // Snapshot before awaiting. Edits arriving mid-flush land in the live sets
     // and must survive into the next window rather than being cleared as if
     // they had been written.
-    const dirtyIds = [...target.dirty];
-    const deletedIds = [...target.deleted];
-    const wasCanvasDirty = target.isCanvasDirty;
-    const canvasSnapshot = target.canvas;
+    const dirtyIds = [...slide.dirty];
+    const deletedIds = [...slide.deleted];
+    const wasCanvasDirty = slide.isCanvasDirty;
+    const canvasSnapshot = slide.canvas;
 
     const rows: NewCanvasElement[] = [];
 
     for (const elementId of dirtyIds) {
-      const element = target.elements.get(elementId);
+      const element = slide.elements?.get(elementId);
 
       if (element) {
         rows.push(element);
@@ -492,21 +839,21 @@ export class CanvasCacheService {
     } catch (error) {
       // Leave the dirty sets intact so the next tick retries. Losing a flush is
       // recoverable; clearing the flags on a failed write would lose the edits.
-      console.error(`Failed to flush canvas for project ${projectId}`, error);
+      console.error(`Failed to flush slide ${canvasId}`, error);
       return;
     }
 
     // Only clear what was actually written.
     for (const elementId of dirtyIds) {
-      target.dirty.delete(elementId);
+      slide.dirty.delete(elementId);
     }
 
     for (const elementId of deletedIds) {
-      target.deleted.delete(elementId);
+      slide.deleted.delete(elementId);
     }
 
-    if (wasCanvasDirty && target.canvas.version === canvasSnapshot.version) {
-      target.isCanvasDirty = false;
+    if (wasCanvasDirty && slide.canvas.version === canvasSnapshot.version) {
+      slide.isCanvasDirty = false;
     }
   }
 
@@ -520,7 +867,9 @@ export class CanvasCacheService {
     const now = Date.now();
 
     for (const [projectId, state] of [...this.cache.entries()]) {
-      const isClean = !state.isCanvasDirty && state.dirty.size === 0 && state.deleted.size === 0;
+      const isClean = [...state.slides.values()].every(
+        (slide) => !slide.isCanvasDirty && slide.dirty.size === 0 && slide.deleted.size === 0,
+      );
       const isIdle = now - state.lastAccessAt > env.CANVAS_CACHE_TTL;
 
       if (isClean && isIdle && !hasLiveMembers(projectId)) {

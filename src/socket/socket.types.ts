@@ -24,6 +24,7 @@ export const SOCKET_ERROR_CODE = {
   LIMIT_EXCEEDED: "LIMIT_EXCEEDED",
   DUPLICATE_ID: "DUPLICATE_ID",
   VERSION_CONFLICT: "VERSION_CONFLICT",
+  INVALID_OPERATION: "INVALID_OPERATION",
   INTERNAL: "INTERNAL",
 } as const;
 
@@ -102,8 +103,13 @@ export type TElementPatch = {
 
 export type TElementOrderEntry = { elementId: string; zIndex: number };
 
+export type TSlideOrderEntry = { canvasId: string; orderIndex: number };
+
 export type TJoinResult = {
-  canvas: TCanvasDto;
+  /** Every slide's metadata, ordered. */
+  slides: TCanvasDto[];
+  activeCanvasId: string;
+  /** Only the active slide's elements — everything else is fetched lazily via `slide:activate`. */
   elements: TElementDto[];
   members: TPresenceMember[];
   accessibility: ProjectMemberRole;
@@ -111,7 +117,10 @@ export type TJoinResult = {
 };
 
 export type ClientToServerEvents = {
-  "canvas:join": (payload: { projectId: string }, ack: (result: TAck<TJoinResult>) => void) => void;
+  "canvas:join": (
+    payload: { projectId: string; activeCanvasId?: string },
+    ack: (result: TAck<TJoinResult>) => void,
+  ) => void;
   "canvas:leave": (payload: { projectId: string }) => void;
 
   /**
@@ -122,28 +131,61 @@ export type ClientToServerEvents = {
 
   "selection:change": (payload: { projectId: string; elementIds: string[] }) => void;
 
+  /** Lazily fetches one slide's elements — the first time it's needed after a join that didn't include it. */
+  "slide:activate": (
+    payload: { projectId: string; canvasId: string },
+    ack: (result: TAck<{ elements: TElementDto[] }>) => void,
+  ) => void;
+
+  "slide:create": (
+    payload: { projectId: string; canvasId: string; afterCanvasId?: string },
+    ack: (result: TAck<{ slide: TCanvasDto; order: TSlideOrderEntry[] }>) => void,
+  ) => void;
+
+  /** `canvasId` here is the slide being copied, not the new one — the server mints that id. */
+  "slide:duplicate": (
+    payload: { projectId: string; canvasId: string },
+    ack: (result: TAck<{ slide: TCanvasDto; elements: TElementDto[]; order: TSlideOrderEntry[] }>) => void,
+  ) => void;
+
+  "slide:reorder": (
+    payload: { projectId: string; order: TSlideOrderEntry[] },
+    ack: (result: TAck<{ order: TSlideOrderEntry[] }>) => void,
+  ) => void;
+
+  "slide:delete": (
+    payload: { projectId: string; canvasId: string },
+    ack: (result: TAck<{ canvasId: string }>) => void,
+  ) => void;
+
   "element:create": (
-    payload: { projectId: string; element: TElementCreateInput },
+    payload: { projectId: string; canvasId: string; element: TElementCreateInput },
     ack: (result: TAck<{ element: TElementDto }>) => void,
   ) => void;
 
   "element:update": (
-    payload: { projectId: string; elementId: string; baseVersion: number; patch: TElementPatch },
+    payload: { projectId: string; canvasId: string; elementId: string; baseVersion: number; patch: TElementPatch },
     ack: (result: TAck<{ version: number }>) => void,
   ) => void;
 
   "element:delete": (
-    payload: { projectId: string; elementIds: string[] },
+    payload: { projectId: string; canvasId: string; elementIds: string[] },
     ack: (result: TAck<{ elementIds: string[] }>) => void,
   ) => void;
 
   "element:reorder": (
-    payload: { projectId: string; order: TElementOrderEntry[] },
+    payload: { projectId: string; canvasId: string; order: TElementOrderEntry[] },
     ack: (result: TAck<{ order: TElementOrderEntry[] }>) => void,
   ) => void;
 
   "canvas:resize": (
-    payload: { projectId: string; width: number; height: number; aspectRatioPreset: TAspectRatioPreset },
+    payload: {
+      projectId: string;
+      canvasId: string;
+      width: number;
+      height: number;
+      aspectRatioPreset: TAspectRatioPreset;
+    },
     ack: (result: TAck<{ canvas: TCanvasDto }>) => void,
   ) => void;
 };
@@ -156,27 +198,54 @@ export type ServerToClientEvents = {
   "cursor:moved": (payload: { projectId: string; socketId: string; userId: string; x: number; y: number }) => void;
   "selection:changed": (payload: { projectId: string; socketId: string; elementIds: string[] }) => void;
 
+  "slide:created": (payload: {
+    projectId: string;
+    socketId: string;
+    slide: TCanvasDto;
+    order: TSlideOrderEntry[];
+  }) => void;
+  "slide:duplicated": (payload: {
+    projectId: string;
+    socketId: string;
+    slide: TCanvasDto;
+    elements: TElementDto[];
+    order: TSlideOrderEntry[];
+  }) => void;
+  "slide:reordered": (payload: { projectId: string; socketId: string; order: TSlideOrderEntry[] }) => void;
+  "slide:deleted": (payload: { projectId: string; socketId: string; canvasId: string }) => void;
+
   // Every broadcast carries its originating `socketId` so the sender can
   // discard its own echo instead of re-applying what it already applied
   // optimistically.
-  "element:created": (payload: { projectId: string; socketId: string; element: TElementDto }) => void;
+  "element:created": (payload: { projectId: string; canvasId: string; socketId: string; element: TElementDto }) => void;
   "element:updated": (payload: {
     projectId: string;
+    canvasId: string;
     socketId: string;
     elementId: string;
     version: number;
     patch: TElementPatch;
   }) => void;
-  "element:deleted": (payload: { projectId: string; socketId: string; elementIds: string[] }) => void;
-  "element:reordered": (payload: { projectId: string; socketId: string; order: TElementOrderEntry[] }) => void;
+  "element:deleted": (payload: {
+    projectId: string;
+    canvasId: string;
+    socketId: string;
+    elementIds: string[];
+  }) => void;
+  "element:reordered": (payload: {
+    projectId: string;
+    canvasId: string;
+    socketId: string;
+    order: TElementOrderEntry[];
+  }) => void;
 
   /**
    * The authoritative element, sent only to a client whose patch lost a version
    * race. Overwrite local state unconditionally on receipt.
    */
-  "element:synced": (payload: { projectId: string; element: TElementDto }) => void;
+  "element:synced": (payload: { projectId: string; canvasId: string; element: TElementDto }) => void;
 
-  "canvas:resized": (payload: { projectId: string; socketId: string; canvas: TCanvasDto }) => void;
+  "canvas:resized": (payload: { projectId: string; canvasId: string; socketId: string; canvas: TCanvasDto }) => void;
 
   "access:changed": (payload: { projectId: string; accessibility: ProjectMemberRole }) => void;
   "access:revoked": (payload: { projectId: string }) => void;

@@ -129,6 +129,13 @@ const main = async (): Promise<void> => {
     // ------------------------------------------------------------- 2. joining
     const adminJoin = await emit<TAck>(admin, "canvas:join", { projectId });
     check("admin joins and is told its role", adminJoin.ok && adminJoin.data?.["accessibility"] === "admin", adminJoin);
+    check(
+      "join returns the slide list and an active slide",
+      Array.isArray(adminJoin.data?.["slides"]) && typeof adminJoin.data?.["activeCanvasId"] === "string",
+      adminJoin,
+    );
+
+    const canvasId = adminJoin.data?.["activeCanvasId"] as string;
 
     const joinedByViewer = waitFor(admin, "presence:joined");
     const viewerJoin = await emit<TAck>(viewer, "canvas:join", { projectId });
@@ -145,6 +152,7 @@ const main = async (): Promise<void> => {
 
     const createAck = await emit<TAck>(admin, "element:create", {
       projectId,
+      canvasId,
       element: {
         elementId,
         type: "rect",
@@ -163,25 +171,28 @@ const main = async (): Promise<void> => {
     // ----------------------- 4. THE PERMISSION BOUNDARY: viewer cannot mutate
     const viewerCreate = await emit<TAck>(viewer, "element:create", {
       projectId,
+      canvasId,
       element: { elementId: crypto.randomUUID(), type: "ellipse", x: 0, y: 0, width: 50, height: 50 },
     });
     check("viewer is refused element:create", !viewerCreate.ok && viewerCreate.code === "FORBIDDEN", viewerCreate);
 
     const viewerUpdate = await emit<TAck>(viewer, "element:update", {
       projectId,
+      canvasId,
       elementId,
       baseVersion: 1,
       patch: { x: 999 },
     });
     check("viewer is refused element:update", !viewerUpdate.ok && viewerUpdate.code === "FORBIDDEN", viewerUpdate);
 
-    const viewerDelete = await emit<TAck>(viewer, "element:delete", { projectId, elementIds: [elementId] });
+    const viewerDelete = await emit<TAck>(viewer, "element:delete", { projectId, canvasId, elementIds: [elementId] });
     check("viewer is refused element:delete", !viewerDelete.ok && viewerDelete.code === "FORBIDDEN", viewerDelete);
 
     // ------------------------------------------------- 5. update + LWW resync
     const updated = waitFor<{ version: number }>(viewer, "element:updated");
     const updateAck = await emit<TAck>(admin, "element:update", {
       projectId,
+      canvasId,
       elementId,
       baseVersion: 1,
       patch: { x: 300, y: 150, fill: "#f5222d" },
@@ -193,6 +204,7 @@ const main = async (): Promise<void> => {
     const syncedPromise = waitFor<{ element: { x: number } }>(admin, "element:synced");
     const staleAck = await emit<TAck>(admin, "element:update", {
       projectId,
+      canvasId,
       elementId,
       baseVersion: 1, // deliberately stale — version is now 2
       patch: { x: -1 },
@@ -211,6 +223,7 @@ const main = async (): Promise<void> => {
     const resized = waitFor<{ canvas: { width: number } }>(viewer, "canvas:resized");
     const resizeAck = await emit<TAck>(admin, "canvas:resize", {
       projectId,
+      canvasId,
       width: 1920,
       height: 1080,
       aspectRatioPreset: "16:9",
@@ -220,6 +233,7 @@ const main = async (): Promise<void> => {
 
     const viewerResize = await emit<TAck>(viewer, "canvas:resize", {
       projectId,
+      canvasId,
       width: 100,
       height: 100,
       aspectRatioPreset: "1:1",
@@ -229,6 +243,7 @@ const main = async (): Promise<void> => {
     // -------------------------------------------------- 8. validation is real
     const badPayload = await emit<TAck>(admin, "element:update", {
       projectId,
+      canvasId,
       elementId,
       baseVersion: 2,
       patch: { opacity: 42 }, // out of the 0..1 range
@@ -247,20 +262,93 @@ const main = async (): Promise<void> => {
     check("the flushed row holds the bumped version", persisted?.version === 2, persisted?.version);
     check("props round-trips through jsonb", persisted?.props !== undefined);
 
-    const [persistedCanvas] = await db.select().from(canvases).where(eq(canvases.projectId, projectId)).limit(1);
+    const [persistedCanvas] = await db.select().from(canvases).where(eq(canvases.canvasId, canvasId)).limit(1);
     check("the canvas resize reached Postgres", persistedCanvas?.width === 1920 && persistedCanvas?.height === 1080, {
       width: persistedCanvas?.width,
     });
 
-    // ------------------------------------------------- 10. presence on leave
+    // ---------------------------------------------------------- 10. slides
+    const slideCreated = waitFor<{ slide: { canvasId: string } }>(viewer, "slide:created");
+    const newSlideId = crypto.randomUUID();
+    const createSlideAck = await emit<TAck>(admin, "slide:create", { projectId, canvasId: newSlideId });
+    check("admin can create a slide", createSlideAck.ok, createSlideAck);
+    const slideCreatedSeen = await slideCreated;
+    check("viewer receives the created slide live", slideCreatedSeen.slide.canvasId === newSlideId);
+
+    const viewerSlideCreate = await emit<TAck>(viewer, "slide:create", { projectId, canvasId: crypto.randomUUID() });
+    check("viewer is refused slide:create", !viewerSlideCreate.ok && viewerSlideCreate.code === "FORBIDDEN", viewerSlideCreate);
+
+    const slideDuplicated = waitFor<{ slide: { canvasId: string }; elements: { elementId: string }[] }>(
+      viewer,
+      "slide:duplicated",
+    );
+    const duplicateAck = await emit<TAck>(admin, "slide:duplicate", { projectId, canvasId });
+    check("admin can duplicate a slide", duplicateAck.ok, duplicateAck);
+    const duplicateData = duplicateAck.data as { slide: { canvasId: string }; elements: { elementId: string }[] };
+    check(
+      "the duplicated slide copies the source's elements",
+      Array.isArray(duplicateData?.elements) && duplicateData.elements.length === 1,
+      duplicateData,
+    );
+    const duplicatedSeen = await slideDuplicated;
+    check("viewer receives the duplicated slide live", duplicatedSeen.slide.canvasId === duplicateData.slide.canvasId);
+    const duplicatedCanvasId = duplicateData.slide.canvasId;
+
+    const viewerSlideDuplicate = await emit<TAck>(viewer, "slide:duplicate", { projectId, canvasId });
+    check(
+      "viewer is refused slide:duplicate",
+      !viewerSlideDuplicate.ok && viewerSlideDuplicate.code === "FORBIDDEN",
+      viewerSlideDuplicate,
+    );
+
+    const slideReordered = waitFor<{ order: { canvasId: string; orderIndex: number }[] }>(viewer, "slide:reordered");
+    const reorderAck = await emit<TAck>(admin, "slide:reorder", {
+      projectId,
+      order: [
+        { canvasId: duplicatedCanvasId, orderIndex: 0 },
+        { canvasId, orderIndex: 1 },
+        { canvasId: newSlideId, orderIndex: 2 },
+      ],
+    });
+    check("admin can reorder slides", reorderAck.ok, reorderAck);
+    await slideReordered;
+    check("viewer receives the slide reorder live", true);
+
+    const viewerSlideReorder = await emit<TAck>(viewer, "slide:reorder", {
+      projectId,
+      order: [{ canvasId, orderIndex: 0 }],
+    });
+    check("viewer is refused slide:reorder", !viewerSlideReorder.ok && viewerSlideReorder.code === "FORBIDDEN", viewerSlideReorder);
+
+    const viewerSlideDelete = await emit<TAck>(viewer, "slide:delete", { projectId, canvasId: newSlideId });
+    check("viewer is refused slide:delete", !viewerSlideDelete.ok && viewerSlideDelete.code === "FORBIDDEN", viewerSlideDelete);
+
+    const slideDeleted = waitFor<{ canvasId: string }>(viewer, "slide:deleted");
+    const deleteSlideAck = await emit<TAck>(admin, "slide:delete", { projectId, canvasId: newSlideId });
+    check("admin can delete a non-last slide", deleteSlideAck.ok, deleteSlideAck);
+    const slideDeletedSeen = await slideDeleted;
+    check("viewer receives the slide deletion live", slideDeletedSeen.canvasId === newSlideId);
+
+    // Delete slides down to one, then confirm the last one is protected.
+    const deleteDuplicateAck = await emit<TAck>(admin, "slide:delete", { projectId, canvasId: duplicatedCanvasId });
+    check("admin can delete the duplicated slide too", deleteDuplicateAck.ok, deleteDuplicateAck);
+
+    const lastSlideDeleteAck = await emit<TAck>(admin, "slide:delete", { projectId, canvasId });
+    check(
+      "deleting a project's last remaining slide is rejected",
+      !lastSlideDeleteAck.ok && lastSlideDeleteAck.code === "INVALID_OPERATION",
+      lastSlideDeleteAck,
+    );
+
+    // ------------------------------------------------- 11. presence on leave
     const left = waitFor<{ userId: string }>(admin, "presence:left");
     viewer.disconnect();
     viewer = null;
     const leftPayload = await left;
     check("peers are told when someone leaves", leftPayload.userId === viewerRow.userId, leftPayload);
 
-    // ---------------------------------------------------- 11. soft delete
-    const deleteAck = await emit<TAck>(admin, "element:delete", { projectId, elementIds: [elementId] });
+    // ---------------------------------------------------- 12. soft delete
+    const deleteAck = await emit<TAck>(admin, "element:delete", { projectId, canvasId, elementIds: [elementId] });
     check("admin can delete an element", deleteAck.ok, deleteAck);
 
     await canvasCacheService.flushAll();
