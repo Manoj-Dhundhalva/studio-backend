@@ -1,0 +1,14 @@
+{
+  // Typechecks the standalone check scripts without pulling them into the
+  // emitting build (they live outside the root tsconfig's `rootDir`).
+  // Run with: yarn typecheck:test
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "noEmit": true,
+    "paths": {
+      "@/*": ["../src/*"]
+    }
+  },
+  "include": ["./**/*", "../src/**/*"]
+}

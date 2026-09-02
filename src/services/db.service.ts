@@ -1,11 +1,16 @@
 import { and, asc, desc, eq, exists, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db/connection.js";
-import { projectMembers, projects, users } from "@/db/schema.js";
+import { canvasElements, canvases, projectMembers, projects, users } from "@/db/schema.js";
 
 export type NewUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type ProjectMember = typeof projectMembers.$inferSelect;
+export type ProjectMemberRole = ProjectMember["role"];
+export type Canvas = typeof canvases.$inferSelect;
+export type NewCanvas = typeof canvases.$inferInsert;
+export type CanvasElement = typeof canvasElements.$inferSelect;
+export type NewCanvasElement = typeof canvasElements.$inferInsert;
 
 export type UserProjectSummary = {
   projectId: string;
@@ -110,6 +115,11 @@ export class DbService {
       if (!member) {
         throw new Error("Failed to add project admin");
       }
+
+      // Seeded here so a project can never exist without a canvas. The cache's
+      // `getOrHydrate` still creates one lazily, as a safety net for the
+      // projects that predate this column.
+      await tx.insert(canvases).values({ projectId: project.projectId });
 
       return { project, member };
     });

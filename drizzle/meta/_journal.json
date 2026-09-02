@@ -22,6 +22,13 @@
       "when": 1788335520980,
       "tag": "0002_new_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788344429595,
+      "tag": "0003_fantastic_red_wolf",
+      "breakpoints": true
     }
   ]
 }

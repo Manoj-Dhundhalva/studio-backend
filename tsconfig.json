@@ -33,6 +33,11 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*", "__test__/**/*"],
-  "exclude": ["node_modules", "dist"]
+  // `__test__` is deliberately not in `include`: it sits outside `rootDir`
+  // (`./src`), so including it makes `tsc` fail the build with TS6059. The
+  // checks there run through `tsx` (`yarn check:realtime`), which does not need
+  // them to be part of the emitting program. Typecheck them with
+  // `yarn typecheck:test`.
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "__test__"]
 }

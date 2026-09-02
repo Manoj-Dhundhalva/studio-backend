@@ -3,6 +3,9 @@ import { Router } from "express";
 import { requireAuth } from "@/middlewares/index.js";
 import { validateBody, validateParams, validateQuery } from "@/middlewares/validation.middleware.js";
 
+import { getCanvas, updateCanvas } from "@/modules/canvas/canvas.controller.js";
+import { updateCanvasSchema } from "@/modules/canvas/canvas.validation.js";
+
 import {
   addProjectMembers,
   createProject,
@@ -59,6 +62,19 @@ router.delete(
   validateParams(projectIdParamsSchema),
   validateBody(removeProjectMembersSchema),
   removeProjectMembers,
+);
+
+// Canvas lives under the project it belongs to, so it inherits `requireAuth` and
+// the same `:projectId` validation as every sibling route. Registered flat
+// rather than as a sub-router: `validateParams` rewrites `req.params` via
+// `Object.defineProperty`, which a mounted child router would only see through
+// `mergeParams`.
+router.get("/:projectId/canvas", validateParams(projectIdParamsSchema), getCanvas);
+router.patch(
+  "/:projectId/canvas",
+  validateParams(projectIdParamsSchema),
+  validateBody(updateCanvasSchema),
+  updateCanvas,
 );
 
 export default router;

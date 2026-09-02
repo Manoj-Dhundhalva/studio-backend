@@ -1,6 +1,7 @@
 import { type Request, type Response } from "express";
 
 import { dbService } from "@/services/db.service.js";
+import { notifyAccessChanged, notifyAccessRevoked } from "@/socket/socket.notifier.js";
 
 import type {
   AddProjectMembersBody,
@@ -139,7 +140,16 @@ export const addProjectMembers = async (
     return;
   }
 
-  await dbService.addProjectMembers(projectId, members);
+  const added = await dbService.addProjectMembers(projectId, members);
+
+  // Re-adding an existing member updates their role (the upsert sets
+  // `role = excluded.role`), so this path can change a live socket's permissions
+  // too — easy to miss, and it would otherwise leave a re-invited member holding
+  // a stale elevated role.
+  notifyAccessChanged(
+    projectId,
+    added.map(({ userId, role }) => ({ userId, accessibility: role })),
+  );
 
   res.status(204).send();
 };
@@ -176,6 +186,14 @@ export const updateProjectMembersAccessibility = async (
     return;
   }
 
+  // Rewrites the role cached on every live socket of every affected user, so a
+  // demotion blocks their next mutation immediately — before this response even
+  // reaches the admin who made the change.
+  notifyAccessChanged(
+    projectId,
+    updated.map(({ userId, role }) => ({ userId, accessibility: role })),
+  );
+
   res.status(200).json({
     members: updated.map(({ userId, role }) => ({ userId, accessibility: role })),
   });
@@ -201,7 +219,11 @@ export const removeProjectMembers = async (
     return;
   }
 
-  await dbService.removeProjectMembers(projectId, userIds);
+  const removedUserIds = await dbService.removeProjectMembers(projectId, userIds);
+
+  // Driven by the ids the DB actually removed, not the request body, so a userId
+  // that was never a member doesn't generate a spurious revocation.
+  notifyAccessRevoked(projectId, removedUserIds);
 
   res.status(204).send();
 };

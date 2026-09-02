@@ -52,6 +52,22 @@ const envSchema = z.object({
     .number()
     .positive()
     .default(60 * 1000), // 1 min
+
+  // How often dirty canvas state is bulk-written to Postgres. This interval is
+  // what stops a 60fps drag from becoming 60 writes/second — every event in the
+  // window collapses into a single row update.
+  CANVAS_FLUSH_INTERVAL: z.coerce.number().positive().default(2000),
+
+  // Idle projects (no live members, nothing dirty) are dropped from the
+  // in-memory cache after this long, so a long-lived server stays bounded.
+  CANVAS_CACHE_TTL: z.coerce
+    .number()
+    .positive()
+    .default(5 * 60 * 1000), // 5 min
+
+  MAX_ELEMENTS_PER_CANVAS: z.coerce.number().positive().default(500),
+
+  SHUTDOWN_TIMEOUT: z.coerce.number().positive().default(10 * 1000),
 });
 
 const result = envSchema.safeParse(process.env);
