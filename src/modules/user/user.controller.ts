@@ -2,7 +2,7 @@ import { type Request, type Response } from "express";
 
 import { dbService } from "@/services/db.service.js";
 
-import type { UpdateUsernameBody } from "./user.validation.js";
+import type { SearchUsersQuery, UpdateUsernameBody } from "./user.validation.js";
 
 export const getProfile = (req: Request, res: Response) => {
   const { userId, email, username, avatarUrl } = req.user!;
@@ -23,4 +23,14 @@ export const updateUsername = async (req: Request<unknown, unknown, UpdateUserna
   const { userId, email, username: updatedUsername, avatarUrl } = updatedUser;
 
   res.status(200).json({ userId, email, username: updatedUsername, avatarUrl });
+};
+
+export const searchUsers = async (req: Request<unknown, unknown, unknown, SearchUsersQuery>, res: Response) => {
+  const { q } = req.query;
+
+  const results = await dbService.searchUsers(q);
+
+  res.status(200).json({
+    users: results.map(({ userId, avatarUrl, username, email }) => ({ userId, avatar: avatarUrl, username, email })),
+  });
 };

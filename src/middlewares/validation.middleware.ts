@@ -18,7 +18,11 @@ const errorMessages: Record<RequestField, string> = {
 const validate = (schema: ZodType, field: RequestField) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
-      req[field] = schema.parse(req[field]);
+      const parsed = schema.parse(req[field]);
+      // Express 5 exposes `req.query` as a getter with no setter, so a plain
+      // `req[field] = parsed` throws for query (but not body/params). Defining an
+      // own property shadows that getter and works uniformly for all three fields.
+      Object.defineProperty(req, field, { value: parsed, writable: true, enumerable: true, configurable: true });
       next();
     } catch (error) {
       if (error instanceof ZodError) {
