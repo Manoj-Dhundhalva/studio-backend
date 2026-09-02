@@ -42,6 +42,8 @@ export type TPresenceMember = {
   accessibility: ProjectMemberRole;
   /** Stable per-user colour for the cursor and avatar ring. */
   color: string;
+  /** The slide this socket currently has open — lets peers scope cursors to a shared slide. */
+  activeCanvasId: string;
 };
 
 /** Wire form of an element. Dates are serialised, so they are dropped rather than sent as strings. */
@@ -131,6 +133,9 @@ export type ClientToServerEvents = {
 
   "selection:change": (payload: { projectId: string; elementIds: string[] }) => void;
 
+  /** Fire-and-forget: broadcasts which slide this socket now has open, for cursor/presence scoping. */
+  "presence:activeSlide": (payload: { projectId: string; canvasId: string }) => void;
+
   /** Lazily fetches one slide's elements — the first time it's needed after a join that didn't include it. */
   "slide:activate": (
     payload: { projectId: string; canvasId: string },
@@ -197,6 +202,7 @@ export type ServerToClientEvents = {
 
   "cursor:moved": (payload: { projectId: string; socketId: string; userId: string; x: number; y: number }) => void;
   "selection:changed": (payload: { projectId: string; socketId: string; elementIds: string[] }) => void;
+  "presence:activeSlideChanged": (payload: { projectId: string; socketId: string; canvasId: string }) => void;
 
   "slide:created": (payload: {
     projectId: string;
@@ -258,4 +264,6 @@ export type TSocketData = {
   /** Per-project role, refreshed on join and rewritten in place when an admin changes it. */
   roles: Map<string, ProjectMemberRole>;
   color: string;
+  /** Per-project active slide, mirroring `roles` — set on join, updated by `presence:activeSlide`. */
+  activeCanvasIds: Map<string, string>;
 };

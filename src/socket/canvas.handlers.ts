@@ -8,6 +8,7 @@ import {
   elementUpdatePayloadSchema,
   joinPayloadSchema,
   leavePayloadSchema,
+  presenceActiveSlidePayloadSchema,
   selectionChangePayloadSchema,
   slideActivatePayloadSchema,
   slideCreatePayloadSchema,
@@ -49,6 +50,7 @@ const toPresenceMember = (socket: TAppSocket, projectId: string): TPresenceMembe
   avatarUrl: socket.data.user.avatarUrl,
   accessibility: socket.data.roles.get(projectId) ?? "viewer",
   color: socket.data.color,
+  activeCanvasId: socket.data.activeCanvasIds.get(projectId) ?? "",
 });
 
 /**
@@ -125,6 +127,8 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
 
         const elements = await canvasCacheService.listElements(projectId, resolvedActiveCanvasId);
 
+        socket.data.activeCanvasIds.set(projectId, resolvedActiveCanvasId);
+
         ack({
           ok: true,
           data: {
@@ -146,6 +150,19 @@ export const registerCanvasHandlers = (socket: TAppSocket): void => {
       }
     })();
   });
+
+  socket.on(
+    "presence:activeSlide",
+    guardRead(socket, "presence:activeSlide", presenceActiveSlidePayloadSchema, (context, payload) => {
+      socket.data.activeCanvasIds.set(context.projectId, payload.canvasId);
+
+      socket.to(projectRoom(context.projectId)).emit("presence:activeSlideChanged", {
+        projectId: context.projectId,
+        socketId: socket.id,
+        canvasId: payload.canvasId,
+      });
+    }),
+  );
 
   socket.on(
     "slide:activate",

@@ -40,6 +40,7 @@ export const authenticateSocket = async (
     socket.data.user = user;
     socket.data.roles = new Map();
     socket.data.color = utils.color.presenceColorFor(user.userId);
+    socket.data.activeCanvasIds = new Map();
 
     next();
   } catch {

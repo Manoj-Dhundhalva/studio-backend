@@ -100,6 +100,9 @@ export const selectionChangePayloadSchema = z.object({
 
 export const slideActivatePayloadSchema = z.object(canvasScoped);
 
+/** Fired whenever the viewer switches slides, so peers can scope cursors/presence to a shared slide. */
+export const presenceActiveSlidePayloadSchema = z.object(canvasScoped);
+
 export const slideCreatePayloadSchema = z.object({
   ...projectScoped,
   canvasId: z.uuid(),
