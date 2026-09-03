@@ -3,10 +3,11 @@ import { type Request, type Response } from "express";
 import { env } from "@/config/env.js";
 import { canvasCacheService } from "@/services/canvas-cache.service.js";
 import { dbService, type AiMessage } from "@/services/db.service.js";
-import { openAiService, type TAiOperation } from "@/services/openai.service.js";
-import { toElementDto } from "@/socket/canvas.handlers.js";
+import { openAiService, type TAiOperation, type TAiSlideContext } from "@/services/openai.service.js";
+import { toCanvasDto, toElementDto } from "@/socket/canvas.handlers.js";
 import { tryGetIo } from "@/socket/index.js";
 import { projectRoom, type TAiMessageDto } from "@/socket/socket.types.js";
+import { ASPECT_RATIO_SIZES } from "@/types/canvas.types.js";
 
 import type { ProjectIdParams } from "@/modules/project/project.validation.js";
 
@@ -14,6 +15,29 @@ import type { SendAiMessageBody } from "./ai.validation.js";
 
 /** How many prior turns are sent back to the model as conversational context. */
 const AI_HISTORY_LIMIT = 20;
+
+/**
+ * Ceiling on slides one request may create. There is no max-slides limit in
+ * the schema or cache layer, so without this a runaway model could append
+ * hundreds of rows off a single prompt.
+ */
+const MAX_AI_SLIDES_PER_REQUEST = 20;
+
+/**
+ * Ceiling on slide deletions per request. Deletion is irreversible (there's no
+ * undo in the editor), so a misread prompt shouldn't be able to take a large
+ * deck apart in one shot. `deleteSlide` separately refuses the project's last
+ * remaining slide, and `wouldEmptyDeck` below stops a batch that would remove
+ * every slide.
+ */
+const MAX_AI_SLIDE_DELETES_PER_REQUEST = 10;
+
+/**
+ * How many slides get their full element list in the prompt. Beyond this the
+ * deck sends geometry and counts only — a 40-slide deck's complete element
+ * dump would crowd out the response budget.
+ */
+const AI_FULL_DETAIL_SLIDE_LIMIT = 15;
 
 const FALLBACK_REPLY = "Sorry, I couldn't process that request. Please try again in a moment.";
 
@@ -45,36 +69,358 @@ export const listAiMessages = async (req: Request<ProjectIdParams>, res: Respons
 };
 
 /**
+ * Clamps an AI-proposed element so it can't hang off its slide.
+ *
+ * A human dragging a shape past the edge is a deliberate, reversible choice
+ * (and the canvas clips the overhang), but the AI places elements blind from
+ * arithmetic and a single slip — `width` set to the full slide width at a
+ * non-zero `x` is the common one — silently pushes content out of frame.
+ * Shrinking first, then nudging, keeps the element whole rather than cropping.
+ */
+const fitWithinCanvas = (
+  element: { x: number; y: number; width: number; height: number },
+  canvasWidth: number,
+  canvasHeight: number,
+): { x: number; y: number; width: number; height: number } => {
+  const width = Math.min(element.width, canvasWidth);
+  const height = Math.min(element.height, canvasHeight);
+
+  return {
+    width,
+    height,
+    x: Math.min(Math.max(element.x, 0), canvasWidth - width),
+    y: Math.min(Math.max(element.y, 0), canvasHeight - height),
+  };
+};
+
+/**
+ * Broadcasts the deck's current order to the room.
+ *
+ * Always sends the FULL order, never the subset a caller asked to move: the
+ * client's `slidesReordered` reducer only rewrites the `orderIndex` of slides
+ * present in the payload and leaves the rest untouched, so a partial order
+ * would strand the unmentioned slides at stale indices.
+ */
+const broadcastDeckOrder = async (projectId: string): Promise<void> => {
+  const slides = await canvasCacheService.listSlides(projectId);
+
+  tryGetIo()
+    ?.to(projectRoom(projectId))
+    .emit("slide:reordered", {
+      projectId,
+      socketId: "",
+      order: slides.map((slide, index) => ({ canvasId: slide.canvasId, orderIndex: index })),
+    });
+};
+
+type TOpCounts = {
+  slidesCreated: number;
+  slidesDeleted: number;
+  slidesDuplicated: number;
+  slidesReordered: boolean;
+  created: number;
+  updated: number;
+  deleted: number;
+  /** Ops dropped because the element/slide was gone or had moved on. */
+  skipped: number;
+  /** Ops naming a slide/element that doesn't exist — usually a misread reference. */
+  badReferences: number;
+  /** Ops dropped because a cap (slides-per-request, elements-per-canvas) was hit. */
+  limited: number;
+  /** Delete ops refused because the project must keep at least one slide. */
+  lastSlideRefusals: number;
+  /** Operations the schema couldn't parse at all. */
+  rejected: number;
+};
+
+type TApplyResult = TOpCounts & {
+  /** Slides this request created, in creation order. */
+  createdCanvasIds: string[];
+  /** Slides this request deleted. */
+  deletedCanvasIds: string[];
+};
+
+/**
  * Applies the AI's proposed operations through the canvas cache — the same
  * path a human edit takes — so version bookkeeping and the eventual DB flush
- * stay consistent. AI-minted `elementId`s are re-keyed to real UUIDs as
- * they're created, so a later "update"/"delete" op in the same batch that
- * refers to an id the AI just invented still resolves correctly.
+ * stay consistent.
+ *
+ * Both slide and element ids the AI invents are re-keyed to real UUIDs as
+ * they're created, so a later op in the same batch referring to an id the AI
+ * just made up still resolves. Element ops with no `slideId` fall back to the
+ * active slide, which is what keeps single-slide requests behaving exactly as
+ * they did before slides were addressable.
+ *
+ * Broadcasts are deliberately split: edits to slides that already existed go
+ * out as granular `element:*` events (every client already has those canvases
+ * hydrated), while a slide this request created is announced once, at the end,
+ * as a single `slide:generated` carrying the canvas AND its elements. Emitting
+ * `slide:created` plus a stream of `element:created` instead would leave every
+ * client with an element-bearing canvas entity whose `canvas` is null — which
+ * renders as a thumbnail skeleton that never resolves, because the client's
+ * hydration backfill early-returns once an entity exists.
  */
 const applyOperations = async (
   projectId: string,
-  canvasId: string,
+  activeCanvasId: string,
   operations: TAiOperation[],
-): Promise<{ created: number; updated: number; deleted: number; skipped: number }> => {
-  const idMap = new Map<string, string>();
-  const resolveId = (id: string): string => idMap.get(id) ?? id;
+  rejected: number,
+  deckSlides: TAiSlideContext[],
+): Promise<TApplyResult> => {
+  const elementIdMap = new Map<string, string>();
+  const slideIdMap = new Map<string, string>();
+  /** Canvases created by this request — their broadcasts are deferred. */
+  const createdCanvasIds: string[] = [];
+  const deletedCanvasIds: string[] = [];
+  /** Seeded once per canvas, then tracked locally instead of re-counting per op. */
+  const elementCounts = new Map<string, number>();
 
-  let created = 0;
-  let updated = 0;
-  let deleted = 0;
-  let skipped = 0;
+  const counts: TOpCounts = {
+    slidesCreated: 0,
+    slidesDeleted: 0,
+    slidesDuplicated: 0,
+    slidesReordered: false,
+    created: 0,
+    updated: 0,
+    deleted: 0,
+    skipped: 0,
+    badReferences: 0,
+    limited: 0,
+    lastSlideRefusals: 0,
+    rejected,
+  };
+
+  // Keyed by both the 1-based slideNumber (as a string) and the real canvasId,
+  // so a fallback lookup works regardless of which one the model echoes back.
+  const bySlideNumber = new Map<string, string>();
+  const knownCanvasIds = new Set<string>();
+
+  for (const slide of deckSlides) {
+    bySlideNumber.set(String(slide.slideNumber), slide.canvasId);
+    knownCanvasIds.add(slide.canvasId);
+  }
+
+  /**
+   * Resolves an AI-supplied slide reference to a real canvasId.
+   *
+   * The model is told to copy the exact canvasId string, but on prompts that
+   * loop uniformly over every slide ("add X to all slides") it has been
+   * observed falling back to a short label instead — "slide3", "3", or a
+   * locally-invented id it never registered via `createSlide` — for a slide
+   * that already existed. `slideIdMap` alone only covers ids the model itself
+   * defined earlier in this batch (new slides), so on its own it turned every
+   * one of those into a silent bad-reference count against a real, existing
+   * deck. Falling back to a bare/mentioned slide number recovers the common
+   * case instead of discarding the op.
+   */
+  const resolveSlideId = (slideId?: string): string => {
+    if (!slideId) {
+      return activeCanvasId;
+    }
+
+    if (slideIdMap.has(slideId) || knownCanvasIds.has(slideId)) {
+      return slideIdMap.get(slideId) ?? slideId;
+    }
+
+    const numberMatch = slideId.match(/\d+/);
+
+    if (numberMatch) {
+      const byNumber = bySlideNumber.get(numberMatch[0]);
+
+      if (byNumber) {
+        return byNumber;
+      }
+    }
+
+    return slideId;
+  };
+
+  const getElementCount = async (canvasId: string): Promise<number> => {
+    const cached = elementCounts.get(canvasId);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const count = await canvasCacheService.countElements(projectId, canvasId);
+    elementCounts.set(canvasId, count);
+
+    return count;
+  };
+
+  /** A slide created by this request is announced later, in one combined event. */
+  const isDeferred = (canvasId: string): boolean => createdCanvasIds.includes(canvasId);
 
   for (const op of operations) {
-    if (op.action === "create") {
-      const count = await canvasCacheService.countElements(projectId, canvasId);
+    if (op.action === "createSlide") {
+      if (counts.slidesCreated >= MAX_AI_SLIDES_PER_REQUEST) {
+        counts.limited += 1;
+        continue;
+      }
 
-      if (count >= env.MAX_ELEMENTS_PER_CANVAS) {
-        skipped += 1;
+      const newCanvasId = crypto.randomUUID();
+      // Appends unless the model asked for a specific position. An unknown
+      // `afterSlideId` also appends (`createSlide` treats `indexOf === -1` as
+      // "end"), so a misread reference degrades rather than failing.
+      const afterCanvasId = op.afterSlideId ? resolveSlideId(op.afterSlideId) : undefined;
+      await canvasCacheService.createSlide(projectId, newCanvasId, afterCanvasId);
+
+      slideIdMap.set(op.slideId, newCanvasId);
+      createdCanvasIds.push(newCanvasId);
+      elementCounts.set(newCanvasId, 0);
+      counts.slidesCreated += 1;
+
+      await applySlideProperties(projectId, newCanvasId, op, { broadcast: false });
+
+      continue;
+    }
+
+    if (op.action === "deleteSlide") {
+      if (counts.slidesDeleted >= MAX_AI_SLIDE_DELETES_PER_REQUEST) {
+        counts.limited += 1;
+        continue;
+      }
+
+      const canvasId = resolveSlideId(op.slideId);
+      const outcome = await canvasCacheService.deleteSlide(projectId, canvasId);
+
+      if (outcome.status === "not-found") {
+        counts.badReferences += 1;
+        console.error("AI deleteSlide referenced unknown slide:", op.slideId, "->", canvasId);
+        continue;
+      }
+
+      if (outcome.status === "last-slide") {
+        counts.lastSlideRefusals += 1;
+        continue;
+      }
+
+      counts.slidesDeleted += 1;
+      deletedCanvasIds.push(canvasId);
+      elementCounts.delete(canvasId);
+
+      tryGetIo()?.to(projectRoom(projectId)).emit("slide:deleted", { projectId, socketId: "", canvasId });
+
+      // The deck order shifted; every client needs the renumbering, not just
+      // the removal.
+      await broadcastDeckOrder(projectId);
+
+      continue;
+    }
+
+    if (op.action === "duplicateSlide") {
+      if (counts.slidesCreated + counts.slidesDuplicated >= MAX_AI_SLIDES_PER_REQUEST) {
+        counts.limited += 1;
+        continue;
+      }
+
+      const canvasId = resolveSlideId(op.slideId);
+      const duplicated = await canvasCacheService.duplicateSlide(projectId, canvasId);
+
+      if (!duplicated) {
+        counts.badReferences += 1;
+        console.error("AI duplicateSlide referenced unknown slide:", op.slideId, "->", canvasId);
+        continue;
+      }
+
+      counts.slidesDuplicated += 1;
+      // Registered so a later op in this same batch can target the copy.
+      slideIdMap.set(op.slideId, canvasId);
+      elementCounts.set(duplicated.canvas.canvasId, duplicated.elements.length);
+
+      // Carries the canvas AND its elements, so the copy's thumbnail renders
+      // without a follow-up hydration round trip.
+      tryGetIo()
+        ?.to(projectRoom(projectId))
+        .emit("slide:duplicated", {
+          projectId,
+          socketId: "",
+          slide: toCanvasDto(duplicated.canvas),
+          elements: duplicated.elements.map(toElementDto),
+          order: duplicated.order,
+        });
+
+      continue;
+    }
+
+    if (op.action === "reorderSlides") {
+      const seen = new Set<string>();
+      const resolved: string[] = [];
+
+      for (const rawId of op.order) {
+        const canvasId = resolveSlideId(rawId);
+
+        if (seen.has(canvasId) || !(await canvasCacheService.hasSlide(projectId, canvasId))) {
+          counts.badReferences += 1;
+          console.error("AI reorderSlides referenced unknown/duplicate slide:", rawId, "->", canvasId);
+          continue;
+        }
+
+        seen.add(canvasId);
+        resolved.push(canvasId);
+      }
+
+      // Slides the model left out keep their relative order, appended after the
+      // ones it named — otherwise a partial list would strand them at stale
+      // `orderIndex` values and the strip's sort would be ambiguous.
+      const existing = await canvasCacheService.listSlides(projectId);
+      const missing = existing.map((slide) => slide.canvasId).filter((canvasId) => !seen.has(canvasId));
+      const finalOrder = [...resolved, ...missing];
+
+      if (finalOrder.length === 0) {
+        continue;
+      }
+
+      await canvasCacheService.reorderSlides(
+        projectId,
+        finalOrder.map((canvasId, index) => ({ canvasId, orderIndex: index })),
+      );
+
+      counts.slidesReordered = true;
+      await broadcastDeckOrder(projectId);
+
+      continue;
+    }
+
+    if (op.action === "updateSlide") {
+      const canvasId = resolveSlideId(op.slideId);
+
+      if (!(await canvasCacheService.hasSlide(projectId, canvasId))) {
+        counts.badReferences += 1;
+        console.error("AI updateSlide referenced unknown slide:", op.slideId, "->", canvasId);
+        continue;
+      }
+
+      const changed = await applySlideProperties(projectId, canvasId, op, { broadcast: !isDeferred(canvasId) });
+
+      if (changed) {
+        counts.updated += 1;
+      } else {
+        counts.skipped += 1;
+      }
+
+      continue;
+    }
+
+    const canvasId = resolveSlideId(op.slideId);
+
+    if (!(await canvasCacheService.hasSlide(projectId, canvasId))) {
+      counts.badReferences += 1;
+      console.error(`AI ${op.action} referenced unknown slide:`, op.slideId, "->", canvasId);
+      continue;
+    }
+
+    if (op.action === "create") {
+      if ((await getElementCount(canvasId)) >= env.MAX_ELEMENTS_PER_CANVAS) {
+        counts.limited += 1;
         continue;
       }
 
       const elementId = crypto.randomUUID();
-      idMap.set(op.elementId, elementId);
+      elementIdMap.set(op.elementId, elementId);
+
+      const slideCanvas = await canvasCacheService.getCanvas(projectId, canvasId);
+      const bounded = slideCanvas ? fitWithinCanvas(op, slideCanvas.width, slideCanvas.height) : op;
 
       const element = await canvasCacheService.createElement(
         projectId,
@@ -82,10 +428,10 @@ const applyOperations = async (
         {
           elementId,
           type: op.type,
-          x: op.x,
-          y: op.y,
-          width: op.width,
-          height: op.height,
+          x: bounded.x,
+          y: bounded.y,
+          width: bounded.width,
+          height: bounded.height,
           rotation: op.rotation,
           opacity: op.opacity,
           fill: op.fill,
@@ -98,33 +444,45 @@ const applyOperations = async (
         null,
       );
 
-      if (element) {
-        created += 1;
+      if (!element) {
+        counts.skipped += 1;
+        continue;
+      }
+
+      counts.created += 1;
+      elementCounts.set(canvasId, (await getElementCount(canvasId)) + 1);
+
+      if (!isDeferred(canvasId)) {
         tryGetIo()
           ?.to(projectRoom(projectId))
           .emit("element:created", { projectId, canvasId, socketId: "", element: toElementDto(element) });
-      } else {
-        skipped += 1;
       }
 
       continue;
     }
 
     if (op.action === "update") {
-      const elementId = resolveId(op.elementId);
+      const elementId = elementIdMap.get(op.elementId) ?? op.elementId;
       const current = (await canvasCacheService.listElements(projectId, canvasId)).find(
         (element) => element.elementId === elementId,
       );
 
       if (!current) {
-        skipped += 1;
+        counts.skipped += 1;
+        console.error("AI update referenced unknown element:", op.elementId, "->", elementId, "on", canvasId);
         continue;
       }
 
       const outcome = await canvasCacheService.applyPatch(projectId, canvasId, elementId, current.version, op.patch);
 
-      if (outcome.status === "applied") {
-        updated += 1;
+      if (outcome.status !== "applied") {
+        counts.skipped += 1;
+        continue;
+      }
+
+      counts.updated += 1;
+
+      if (!isDeferred(canvasId)) {
         tryGetIo()
           ?.to(projectRoom(projectId))
           .emit("element:updated", {
@@ -135,43 +493,199 @@ const applyOperations = async (
             version: outcome.version,
             patch: op.patch,
           });
-      } else {
-        skipped += 1;
       }
 
       continue;
     }
 
     // op.action === "delete"
-    const elementId = resolveId(op.elementId);
+    const elementId = elementIdMap.get(op.elementId) ?? op.elementId;
     const removed = await canvasCacheService.deleteElements(projectId, canvasId, [elementId]);
 
-    if (removed.length > 0) {
-      deleted += 1;
+    if (removed.length === 0) {
+      counts.skipped += 1;
+      console.error("AI delete referenced unknown element:", op.elementId, "->", elementId, "on", canvasId);
+      continue;
+    }
+
+    counts.deleted += 1;
+    elementCounts.set(canvasId, Math.max((await getElementCount(canvasId)) - removed.length, 0));
+
+    if (!isDeferred(canvasId)) {
       tryGetIo()
         ?.to(projectRoom(projectId))
         .emit("element:deleted", { projectId, canvasId, socketId: "", elementIds: removed });
-    } else {
-      skipped += 1;
     }
   }
 
-  return { created, updated, deleted, skipped };
+  // Every newly-created slide is announced here, once it is fully populated,
+  // so each arrives at the client as a single hydration.
+  if (createdCanvasIds.length > 0) {
+    // Read fresh rather than reusing `latestOrder`: slide deletes/reorders in
+    // this same batch may have renumbered the deck after that snapshot.
+    const order = (await canvasCacheService.listSlides(projectId)).map((slide, index) => ({
+      canvasId: slide.canvasId,
+      orderIndex: index,
+    }));
+
+    for (const canvasId of createdCanvasIds) {
+      const canvas = await canvasCacheService.getCanvas(projectId, canvasId);
+
+      if (!canvas) {
+        continue;
+      }
+
+      const elements = await canvasCacheService.listElements(projectId, canvasId);
+
+      tryGetIo()
+        ?.to(projectRoom(projectId))
+        .emit("slide:generated", {
+          projectId,
+          socketId: "",
+          slide: toCanvasDto(canvas),
+          elements: elements.map(toElementDto),
+          order,
+        });
+    }
+  }
+
+  return { ...counts, createdCanvasIds, deletedCanvasIds };
 };
 
-const summarizeOps = (counts: { created: number; updated: number; deleted: number; skipped: number }): string | null => {
-  const parts: string[] = [];
+/**
+ * Applies a slide's size/background if the op carries either. Returns whether
+ * anything actually changed, so the caller can count a no-op op as skipped.
+ */
+const applySlideProperties = async (
+  projectId: string,
+  canvasId: string,
+  op: Extract<TAiOperation, { action: "createSlide" | "updateSlide" }>,
+  { broadcast }: { broadcast: boolean },
+): Promise<boolean> => {
+  let canvas = await canvasCacheService.getCanvas(projectId, canvasId);
 
-  if (counts.created > 0) parts.push(`created ${counts.created}`);
-  if (counts.updated > 0) parts.push(`updated ${counts.updated}`);
-  if (counts.deleted > 0) parts.push(`deleted ${counts.deleted}`);
-  if (counts.skipped > 0) parts.push(`skipped ${counts.skipped} (changed since last view)`);
+  if (!canvas) {
+    return false;
+  }
 
-  if (parts.length === 0) {
+  let changed = false;
+
+  if (op.aspectRatioPreset) {
+    const size = ASPECT_RATIO_SIZES[op.aspectRatioPreset];
+
+    if (size) {
+      canvas = await canvasCacheService.resizeCanvas(
+        projectId,
+        canvasId,
+        size.width,
+        size.height,
+        op.aspectRatioPreset,
+      );
+      changed = true;
+    }
+  }
+
+  if (op.backgroundColor) {
+    canvas = await canvasCacheService.setBackgroundColor(projectId, canvasId, op.backgroundColor);
+    changed = true;
+  }
+
+  if (changed && broadcast) {
+    tryGetIo()
+      ?.to(projectRoom(projectId))
+      .emit("canvas:resized", { projectId, canvasId, socketId: "", canvas: toCanvasDto(canvas) });
+  }
+
+  return changed;
+};
+
+/**
+ * Fraction of a deck a single AI request may delete. A request that asks to
+ * remove most of the deck at once is far more likely to be a misread prompt
+ * than a genuine intent, and deletion is irreversible here (no undo).
+ */
+const MAX_DECK_DELETE_RATIO = 0.5;
+
+/**
+ * Caps how much of the deck one request may delete.
+ *
+ * `deleteSlide` refuses only the project's *last* slide, and it checks one op
+ * at a time — so a batch of deletes will happily strip a 6-slide deck down to
+ * a single slide before that refusal ever fires (observed in testing: "delete
+ * all the slides" removed 5 of 6). Since deletion can't be undone, a batch
+ * targeting more than half the deck is trimmed here, before any of it runs, and
+ * the trimmed ops are reported as limited rather than applied silently.
+ */
+const guardDeckDeletions = (
+  operations: TAiOperation[],
+  deckSize: number,
+): { operations: TAiOperation[]; blocked: number } => {
+  const deleteCount = operations.filter((op) => op.action === "deleteSlide").length;
+  // Always allow at least one deletion, so "delete slide 3" works on a
+  // two-slide deck.
+  const maxDeletes = Math.max(1, Math.floor(deckSize * MAX_DECK_DELETE_RATIO));
+
+  if (deleteCount <= maxDeletes) {
+    return { operations, blocked: 0 };
+  }
+
+  let allowed = maxDeletes;
+
+  const kept = operations.filter((op) => {
+    if (op.action !== "deleteSlide") {
+      return true;
+    }
+
+    if (allowed > 0) {
+      allowed -= 1;
+      return true;
+    }
+
+    return false;
+  });
+
+  return { operations: kept, blocked: deleteCount - maxDeletes };
+};
+
+const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+/**
+ * The one-line "what actually happened" note under the assistant's reply.
+ *
+ * Failures are reported by cause rather than lumped together: a slide the model
+ * couldn't find is a different problem from a concurrent edit or a cap being
+ * hit, and the old shared "skipped N (changed since last view)" wording made a
+ * misread slide reference look like a race condition.
+ */
+const summarizeOps = (counts: TOpCounts): string | null => {
+  const done: string[] = [];
+
+  if (counts.slidesCreated > 0) done.push(`created ${plural(counts.slidesCreated, "slide")}`);
+  if (counts.slidesDuplicated > 0) done.push(`duplicated ${plural(counts.slidesDuplicated, "slide")}`);
+  if (counts.slidesDeleted > 0) done.push(`deleted ${plural(counts.slidesDeleted, "slide")}`);
+  if (counts.slidesReordered) done.push("reordered the deck");
+  if (counts.created > 0) done.push(`added ${plural(counts.created, "element")}`);
+  if (counts.updated > 0) done.push(`updated ${counts.updated}`);
+  if (counts.deleted > 0) done.push(`removed ${plural(counts.deleted, "element")}`);
+
+  const problems: string[] = [];
+
+  if (counts.badReferences > 0) {
+    problems.push(`couldn't find ${plural(counts.badReferences, "slide or element")} that was referenced`);
+  }
+
+  if (counts.rejected > 0) problems.push(`couldn't apply ${plural(counts.rejected, "instruction")}`);
+  if (counts.lastSlideRefusals > 0) problems.push("kept the last remaining slide (a project needs at least one)");
+  if (counts.limited > 0) problems.push(`skipped ${plural(counts.limited, "change")} (limit reached)`);
+  if (counts.skipped > 0) problems.push(`skipped ${plural(counts.skipped, "change")} (already changed)`);
+
+  const all = [...done, ...problems];
+
+  if (all.length === 0) {
     return null;
   }
 
-  return `${parts.join(", ")}.`;
+  return `${all.join(", ")}.`;
 };
 
 export const sendAiMessage = async (req: Request<ProjectIdParams, unknown, SendAiMessageBody>, res: Response) => {
@@ -209,27 +723,82 @@ export const sendAiMessage = async (req: Request<ProjectIdParams, unknown, SendA
   const userMessageDto = toAiMessageDto(userMessage);
   broadcastAiMessage(projectId, userMessageDto);
 
-  const [elements, historyRows] = await Promise.all([
+  const [slides, activeElements, historyRows] = await Promise.all([
+    canvasCacheService.listSlides(projectId),
     canvasCacheService.listElements(projectId, canvasId),
     dbService.listAiMessages(projectId, canvasId, { limit: AI_HISTORY_LIMIT }),
   ]);
 
+  // Elements are sent for every slide so cross-deck requests ("make every
+  // title blue", "clear slide 4") have something to target — but only up to a
+  // limit, beyond which a slide contributes geometry and a count only, since a
+  // very large deck's full element dump would crowd out the response budget.
+  // The active slide always gets full detail regardless of its position.
+  const detailedCanvasIds = new Set<string>([canvasId]);
+
+  for (const slide of slides) {
+    if (detailedCanvasIds.size >= AI_FULL_DETAIL_SLIDE_LIMIT) {
+      break;
+    }
+
+    detailedCanvasIds.add(slide.canvasId);
+  }
+
+  const slideContexts: TAiSlideContext[] = await Promise.all(
+    slides.map(async (slide, index) => {
+      const isActive = slide.canvasId === canvasId;
+      const elements = isActive
+        ? activeElements
+        : detailedCanvasIds.has(slide.canvasId)
+          ? await canvasCacheService.listElements(projectId, slide.canvasId)
+          : null;
+
+      return {
+        canvasId: slide.canvasId,
+        index,
+        slideNumber: index + 1,
+        width: slide.width,
+        height: slide.height,
+        backgroundColor: slide.backgroundColor,
+        elementCount: elements ? elements.length : await canvasCacheService.countElements(projectId, slide.canvasId),
+        elements,
+      };
+    }),
+  );
+
   let reply: string;
   let opsSummary: string | null = null;
+  let createdCanvasIds: string[] = [];
+  let deletedCanvasIds: string[] = [];
 
   try {
     const aiResponse = await openAiService.generateLayoutResponse({
       userPrompt: content,
-      canvas: { width: canvas.width, height: canvas.height, backgroundColor: canvas.backgroundColor },
-      elements,
+      slides: slideContexts,
+      activeCanvasId: canvasId,
       history: historyRows.map((row) => ({ role: row.role, content: row.content })),
     });
 
     reply = aiResponse.reply;
 
-    if (aiResponse.operations.length > 0) {
-      const counts = await applyOperations(projectId, canvasId, aiResponse.operations);
-      opsSummary = summarizeOps(counts);
+    // `rejected` is threaded in so the summary can own up to instructions that
+    // never parsed, rather than them vanishing silently.
+    const guarded = guardDeckDeletions(aiResponse.operations, slides.length);
+
+    if (guarded.operations.length > 0 || aiResponse.rejected > 0 || guarded.blocked > 0) {
+      const result = await applyOperations(
+        projectId,
+        canvasId,
+        guarded.operations,
+        aiResponse.rejected,
+        slideContexts,
+      );
+      // Deletions the deck-wipe guard refused are surfaced as limited, so the
+      // user is told the request was trimmed rather than silently narrowed.
+      result.limited += guarded.blocked;
+      opsSummary = summarizeOps(result);
+      createdCanvasIds = result.createdCanvasIds;
+      deletedCanvasIds = result.deletedCanvasIds;
     }
   } catch (error) {
     console.error("AI assistant request failed", error);
@@ -238,14 +807,25 @@ export const sendAiMessage = async (req: Request<ProjectIdParams, unknown, SendA
 
   const assistantMessage = await dbService.createAiMessage({
     projectId,
-    canvasId,
+    // The request's own slide may have been one of the ones just deleted, in
+    // which case the FK has nothing to point at — anchor the reply to the
+    // project instead of failing the whole request on the insert.
+    canvasId: deletedCanvasIds.includes(canvasId) ? null : canvasId,
     role: "assistant",
-    content: reply,
+    // The model has been seen returning whitespace-only text alongside a valid
+    // set of operations; an empty chat bubble reads as a broken response, so
+    // fall back to the ops summary (or a generic line) instead.
+    content: reply.trim() || opsSummary || "Done.",
     opsSummary,
     createdBy: null,
   });
   const assistantMessageDto = toAiMessageDto(assistantMessage);
   broadcastAiMessage(projectId, assistantMessageDto);
 
-  res.status(201).json({ userMessage: userMessageDto, assistantMessage: assistantMessageDto });
+  res.status(201).json({
+    userMessage: userMessageDto,
+    assistantMessage: assistantMessageDto,
+    createdCanvasIds,
+    deletedCanvasIds,
+  });
 };

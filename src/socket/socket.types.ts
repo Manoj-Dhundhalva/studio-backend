@@ -234,6 +234,22 @@ export type ServerToClientEvents = {
   "slide:reordered": (payload: { projectId: string; socketId: string; order: TSlideOrderEntry[] }) => void;
   "slide:deleted": (payload: { projectId: string; socketId: string; canvasId: string }) => void;
 
+  /**
+   * An AI-generated slide, emitted once its elements are all in place — same
+   * shape as `slide:duplicated` deliberately, so the client can seed the
+   * canvas and its elements in a single `canvasHydrated`. Emitting
+   * `slide:created` plus a stream of `element:created` would instead leave the
+   * client with an element-bearing entity whose `canvas` is null, which
+   * renders as a permanent thumbnail skeleton.
+   */
+  "slide:generated": (payload: {
+    projectId: string;
+    socketId: string;
+    slide: TCanvasDto;
+    elements: TElementDto[];
+    order: TSlideOrderEntry[];
+  }) => void;
+
   // Every broadcast carries its originating `socketId` so the sender can
   // discard its own echo instead of re-applying what it already applied
   // optimistically.

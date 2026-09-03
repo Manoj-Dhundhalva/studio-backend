@@ -136,9 +136,9 @@ export const projectMedia = pgTable(
 );
 
 /**
- * One turn of the AI design-assistant chat for a project. Scoped to both the
- * project and the slide it was sent against, so history and AI context stay
- * per-slide even though the panel itself is project-wide.
+ * One turn of the AI design-assistant chat for a project. The conversation
+ * belongs to the project; `canvasId` only records which slide the turn was
+ * sent against, for context.
  */
 export const aiMessageRoleEnum = pgEnum("ai_message_role", ["user", "assistant"]);
 
@@ -149,9 +149,11 @@ export const aiMessages = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.projectId, { onDelete: "cascade" }),
-    canvasId: uuid("canvas_id")
-      .notNull()
-      .references(() => canvases.canvasId, { onDelete: "cascade" }),
+    // Nullable with `set null`, NOT a cascade: the assistant can delete slides,
+    // and a cascade here meant deleting a slide silently destroyed the chat
+    // history attached to it — including, when the AI deleted the slide the
+    // request came from, the very reply being written for that turn.
+    canvasId: uuid("canvas_id").references(() => canvases.canvasId, { onDelete: "set null" }),
     role: aiMessageRoleEnum("role").notNull(),
     content: text("content").notNull(),
     // Short human-readable description of the layout changes applied, e.g.

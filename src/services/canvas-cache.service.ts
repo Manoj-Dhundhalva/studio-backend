@@ -450,10 +450,23 @@ export class CanvasCacheService {
       return { status: "last-slide" };
     }
 
-    await db.delete(canvases).where(eq(canvases.canvasId, canvasId));
+    const nextOrder = project.order.filter((id) => id !== canvasId);
+
+    // Removing a slide leaves a hole in `orderIndex` (0,1,3,4…). Renumbering the
+    // survivors in the same transaction keeps the sequence dense, which the
+    // client's strip ordering and `createSlide`'s insert-position arithmetic
+    // both assume — and matches what `createSlide`/`duplicateSlide` already do.
+    await db.transaction(async (tx) => {
+      await tx.delete(canvases).where(eq(canvases.canvasId, canvasId));
+
+      for (const [index, id] of nextOrder.entries()) {
+        await tx.update(canvases).set({ orderIndex: index }).where(eq(canvases.canvasId, id));
+      }
+    });
 
     project.slides.delete(canvasId);
-    project.order = project.order.filter((id) => id !== canvasId);
+    project.order = nextOrder;
+    this.reindexSlides(project, nextOrder);
     project.lastAccessAt = Date.now();
 
     return { status: "deleted" };

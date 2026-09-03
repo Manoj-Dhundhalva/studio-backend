@@ -70,3 +70,16 @@ export const ASPECT_RATIO_PRESETS = {
 } as const;
 
 export type TAspectRatioPreset = (typeof ASPECT_RATIO_PRESETS)[keyof typeof ASPECT_RATIO_PRESETS];
+
+/**
+ * Pixel size of each non-custom preset. Mirrors the frontend's
+ * `ASPECT_RATIO_SIZES` — the AI assistant needs these server-side to resize a
+ * slide it just created from a preset name the model chose.
+ */
+export const ASPECT_RATIO_SIZES: Record<Exclude<TAspectRatioPreset, "custom">, { width: number; height: number }> = {
+  [ASPECT_RATIO_PRESETS.SQUARE]: { width: 1080, height: 1080 },
+  [ASPECT_RATIO_PRESETS.LANDSCAPE]: { width: 1920, height: 1080 },
+  [ASPECT_RATIO_PRESETS.PORTRAIT]: { width: 1080, height: 1920 },
+  [ASPECT_RATIO_PRESETS.A4]: { width: 1240, height: 1754 },
+  [ASPECT_RATIO_PRESETS.PRESENTATION]: { width: 1440, height: 1080 },
+};
