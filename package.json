@@ -51,6 +51,7 @@
   },
   "dependencies": {
     "@epic-web/remember": "^1.1.0",
+    "@google/genai": "^2.21.0",
     "axios": "^1.17.0",
     "cheerio": "^1.2.0",
     "cloudinary": "^2.11.0",

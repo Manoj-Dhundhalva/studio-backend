@@ -74,10 +74,10 @@ const envSchema = z.object({
   CLOUDINARY_API_KEY: z.string().default(""),
   CLOUDINARY_API_SECRET: z.string().default(""),
 
-  // AI chat assistant. Left unset until a real OpenAI key is provided —
-  // requests fail at call time until then, but the server still boots.
-  OPENAI_API_KEY: z.string().default(""),
-  OPENAI_MODEL: z.string().default("gpt-4o-mini"),
+  // AI chat assistant (Gemini). Left unset until a real key is provided —
+  // requests fail at call time, but the server still boots.
+  GEMINI_API_KEY: z.string().default(""),
+  AI_MODEL: z.string().default("models/gemini-3-flash-preview"),
 
   SHUTDOWN_TIMEOUT: z.coerce.number().positive().default(10 * 1000),
 });

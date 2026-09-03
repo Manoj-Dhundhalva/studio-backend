@@ -1,8 +1,7 @@
-import axios from "axios";
+import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 
 import { env } from "@/config/env.js";
-import { handleServiceApiError } from "@/services/helpers/service-error-handler.helper.js";
 import {
   ASPECT_RATIO_SIZES,
   CANVAS_ELEMENT_TYPES,
@@ -12,21 +11,7 @@ import {
 
 import type { CanvasElement } from "@/services/db.service.js";
 
-// A whole-deck response is a much bigger generation than a single-slide edit,
-// so this is well above the single-shape case. The SDK-less axios call has no
-// timeout of its own — mirrors `cloudinary.service.ts`.
-const AI_REQUEST_TIMEOUT_MS = 120 * 1000;
-
-/**
- * Raised to 32 000 to handle a 10-slide deck with background shapes + rich
- * element sets (~200-350 tokens/slide × 10 = 2 000-3 500 tokens for content,
- * but the full JSON envelope with formatting easily reaches 20 000+).
- * Without an explicit cap the model can stop mid-object, which surfaces only
- * as an opaque `JSON.parse` failure rather than "the deck was too long".
- */
-const AI_MAX_OUTPUT_TOKENS = 16384; // gpt-4o-mini hard ceiling
-
-const CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
+const AI_MAX_OUTPUT_TOKENS = 65536;
 
 /**
  * One slide's context for the prompt. `elements` is only populated for the
@@ -554,6 +539,7 @@ const buildUserPrompt = (input: TAiRequestInput): string => {
 
 export class OpenAiService {
   private static instance: OpenAiService;
+  private client: GoogleGenAI | null = null;
 
   private constructor() {}
 
@@ -565,60 +551,58 @@ export class OpenAiService {
     return OpenAiService.instance;
   }
 
-  private ensureConfigured(): void {
-    if (!env.OPENAI_API_KEY) {
-      throw new Error("OPENAI_API_KEY is not configured");
+  private getClient(): GoogleGenAI {
+    if (!env.GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
+
+    if (!this.client) {
+      this.client = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+    }
+
+    return this.client;
   }
 
   async generateLayoutResponse(input: TAiRequestInput): Promise<TAiLayoutResponse> {
-    this.ensureConfigured();
-
-    const messages = [
-      { role: "system", content: buildSystemPrompt() },
-      ...input.history.map((turn) => ({ role: turn.role, content: turn.content })),
-      { role: "user", content: buildUserPrompt(input) },
-    ];
+    const ai = this.getClient();
 
     try {
-      const response = await axios.post(
-        CHAT_COMPLETIONS_URL,
-        {
-          model: env.OPENAI_MODEL,
-          messages,
-          response_format: { type: "json_object" },
-          max_tokens: AI_MAX_OUTPUT_TOKENS,
+      const result = await ai.models.generateContent({
+        model: env.AI_MODEL,
+        contents: [
+          ...input.history.map((turn) => ({
+            role: turn.role === "assistant" ? "model" : "user",
+            parts: [{ text: turn.content }],
+          })),
+          { role: "user", parts: [{ text: buildUserPrompt(input) }] },
+        ],
+        config: {
+          systemInstruction: buildSystemPrompt(),
+          temperature: 0.5,
+          maxOutputTokens: AI_MAX_OUTPUT_TOKENS,
+          topP: 0.95,
+          thinkingConfig: { thinkingBudget: -1 },
         },
-        {
-          headers: {
-            Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          timeout: AI_REQUEST_TIMEOUT_MS,
-        },
-      );
+      });
 
-      const finishReason: unknown = response.data?.choices?.[0]?.finish_reason;
-      const content: unknown = response.data?.choices?.[0]?.message?.content;
+      const content = result.text ?? "";
 
-      if (typeof content !== "string") {
-        throw new Error("OpenAI response had no message content");
+      if (!content) {
+        throw new Error("Gemini response had no content");
       }
 
-      // A truncated response is invalid JSON, which would otherwise surface as
-      // an unhelpful `JSON.parse` SyntaxError.
-      if (finishReason === "length") {
-        throw new Error("OpenAI response was truncated — the requested deck is too large for one request");
-      }
+      // Strip markdown code fences the model sometimes adds around JSON.
+      const jsonStr = content
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```\s*$/, "")
+        .trim();
 
-      const parsed: unknown = JSON.parse(content);
+      const parsed: unknown = JSON.parse(jsonStr);
 
       const envelope = aiEnvelopeSchema.safeParse(parsed);
 
-      // Only a malformed envelope is fatal — without a `reply` there is nothing
-      // to show the user at all.
       if (!envelope.success) {
-        console.error("OpenAI response did not match expected shape. Raw content:", content);
+        console.error("Gemini response did not match expected shape. Raw content:", content);
         throw envelope.error;
       }
 
@@ -639,7 +623,11 @@ export class OpenAiService {
 
       return { reply: envelope.data.reply, operations, rejected };
     } catch (error) {
-      handleServiceApiError("OpenAI", error);
+      if (error instanceof Error) {
+        throw new Error(`Gemini API error: ${error.message}`);
+      }
+
+      throw error;
     }
   }
 }
