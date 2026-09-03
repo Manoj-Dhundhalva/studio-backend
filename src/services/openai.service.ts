@@ -220,19 +220,19 @@ Respond with ONLY a raw JSON object (no markdown code fences) of this exact shap
 {
   "reply": "<short human-readable reply describing what you did, in plain conversational text>",
   "operations": [
-    { "action": "createSlide", "slideId": "s1", "aspectRatioPreset": "16:9", "backgroundColor": "#eef2ff" },
-    { "action": "create", "slideId": "s1", "elementId": "bg1", "type": "ellipse", "x": 1560, "y": 0, "width": 360, "height": 360, "fill": "#4f46e5", "opacity": 0.13 },
-    { "action": "create", "slideId": "s1", "elementId": "bg2", "type": "ellipse", "x": 0, "y": 700, "width": 400, "height": 380, "fill": "#c7d2fe", "opacity": 0.2 },
-    { "action": "create", "slideId": "s1", "elementId": "bg3", "type": "ellipse", "x": 0, "y": 430, "width": 150, "height": 150, "fill": "#4f46e5", "opacity": 0.1 },
-    { "_comment": "↑ This is ONE example background (tech/indigo theme). You MUST design your own — different colour, shapes, and positions to fit the actual topic (see BACKGROUND RECIPES BY THEME). Whatever you design, reuse it identically on every slide." },
-    { "action": "create", "slideId": "s1", "elementId": "k1", "type": "text", "x": 120, "y": 88, "width": 1680, "height": 40, "fill": "#4f46e5", "props": { "text": "OVERVIEW", "fontSize": 24, "fontStyle": "bold", "align": "left" } },
+    { "action": "createSlide", "slideId": "s1", "aspectRatioPreset": "16:9", "backgroundColor": "#fff7ed" },
+    { "action": "create", "slideId": "s1", "elementId": "bg1", "type": "rect",    "x": 0,    "y": 900,  "width": 1920, "height": 140, "fill": "#ea580c", "opacity": 0.14, "rotation": -10 },
+    { "action": "create", "slideId": "s1", "elementId": "bg2", "type": "star",    "x": 1700, "y": -50,  "width": 280,  "height": 280, "fill": "#ea580c", "opacity": 0.18 },
+    { "action": "create", "slideId": "s1", "elementId": "bg3", "type": "ellipse", "x": -75,  "y": 780,  "width": 300,  "height": 300, "fill": "#fed7aa", "opacity": 0.22 },
+    { "_comment": "↑ ONE example (creative/marketing: bottom diagonal band + TR star bleeds off corner + BL ellipse bleeds off corner). DESIGN YOUR OWN: use the bleed formula (x = -(w×0.25) for TL, x = 1920-(w×0.75) for TR, etc). Mix shape types. Reuse identically on every slide." },
+    { "action": "create", "slideId": "s1", "elementId": "k1", "type": "text", "x": 120, "y": 88, "width": 1680, "height": 40, "fill": "#ea580c", "props": { "text": "OVERVIEW", "fontSize": 24, "fontStyle": "bold", "align": "left" } },
     { "action": "create", "slideId": "s1", "elementId": "t1", "type": "text", "x": 120, "y": 140, "width": 1680, "height": 110, "fill": "#111827", "props": { "text": "A specific, benefit-driven headline", "fontSize": 68, "fontStyle": "bold", "align": "left" } },
     { "action": "create", "slideId": "s1", "elementId": "b1", "type": "text", "x": 120, "y": 300, "width": 1680, "height": 520, "fill": "#111827", "props": { "text": "• First real point written as a full sentence about the topic\\n• Second concrete point with an actual detail or number\\n• Third point that a reader genuinely learns from\\n• Fourth supporting point tied to the theme", "fontSize": 32, "lineHeight": 1.5, "align": "left" } },
-    { "action": "createSlide", "slideId": "s2", "aspectRatioPreset": "16:9", "backgroundColor": "#eef2ff" },
-    { "_comment": "↓ the SAME three background shapes from s1 — byte-for-byte identical — because the background is the deck's constant." },
-    { "action": "create", "slideId": "s2", "elementId": "bg4", "type": "ellipse", "x": 1560, "y": 0, "width": 360, "height": 360, "fill": "#4f46e5", "opacity": 0.13 },
-    { "action": "create", "slideId": "s2", "elementId": "bg5", "type": "ellipse", "x": 0, "y": 700, "width": 400, "height": 380, "fill": "#c7d2fe", "opacity": 0.2 },
-    { "action": "create", "slideId": "s2", "elementId": "bg6", "type": "ellipse", "x": 0, "y": 430, "width": 150, "height": 150, "fill": "#4f46e5", "opacity": 0.1 },
+    { "action": "createSlide", "slideId": "s2", "aspectRatioPreset": "16:9", "backgroundColor": "#fff7ed" },
+    { "_comment": "↓ SAME background shapes as s1 — x, y, width, height, fill, opacity, rotation identical — only elementId and slideId change." },
+    { "action": "create", "slideId": "s2", "elementId": "bg4", "type": "rect",    "x": 0,    "y": 900,  "width": 1920, "height": 140, "fill": "#ea580c", "opacity": 0.14, "rotation": -10 },
+    { "action": "create", "slideId": "s2", "elementId": "bg5", "type": "star",    "x": 1700, "y": -50,  "width": 280,  "height": 280, "fill": "#ea580c", "opacity": 0.18 },
+    { "action": "create", "slideId": "s2", "elementId": "bg6", "type": "ellipse", "x": -75,  "y": 780,  "width": 300,  "height": 300, "fill": "#fed7aa", "opacity": 0.22 },
     { "action": "create", "slideId": "s2", "elementId": "k2", "type": "text", "x": 120, "y": 88, "width": 1680, "height": 40, "fill": "#4f46e5", "props": { "text": "HOW IT WORKS", "fontSize": 24, "fontStyle": "bold", "align": "left" } },
     { "action": "create", "slideId": "s2", "elementId": "t2", "type": "text", "x": 120, "y": 140, "width": 1680, "height": 110, "fill": "#111827", "props": { "text": "Slide 2 uses a DIFFERENT composition", "fontSize": 68, "fontStyle": "bold", "align": "left" } },
     { "action": "create", "slideId": "s2", "elementId": "card1", "type": "rect", "x": 120, "y": 320, "width": 520, "height": 440, "fill": "#eef2ff", "cornerRadius": 24 },
@@ -349,41 +349,79 @@ STEP 1 — CHOOSE THE SHAPE VOCABULARY that matches the theme's mood (these are 
   · Science / Space / Gaming (dark)  → deep background with glowing accents: white/vivid shapes at low opacity, a couple of small bright dots.
   Pick shapes from: ellipse, rect (optionally cornerRadius + rotation for bands), star, polygon, line. Match the vocabulary to the subject.
 
-STEP 2 — BUILD DEPTH WITH SIZE & OPACITY: use 2-4 shapes total. One larger "anchor" shape (opacity ~0.10-0.16) plus one or two smaller accents (opacity ~0.06-0.12). Optionally add a full-width top accent strip { type:"rect", x:0, y:0, width:1920, height:10, fill:accent, opacity:1 } as a crisp finishing detail. Use accent for stronger shapes and accentSoft for the subtler ones. On DARK backgrounds, shapes are fill="#ffffff" at opacity 0.05-0.10 (plus optional small vivid-accent dots).
+STEP 2 — SIZE, OPACITY, AND STYLING: use 2–4 shapes. Apply deliberate contrast in size and weight:
 
-STEP 3 — PLACE SHAPES ONLY IN THE MARGINS, never behind the content zone (x=120..1800, y=80..960). Balance the composition: if a big shape anchors one corner, counter it with a smaller one in the opposite corner or edge. Safe zones (shapes may bleed off-canvas — the renderer clips overhang):
-  TL x −100..200, y −100..200  ·  TR x 1720..2100, y −100..200
-  BL x −100..200, y 880..1180  ·  BR x 1720..2100, y 880..1180
-  CL x −120..100, y 400..680   ·  CR x 1820..2100, y 400..680
-Don't crowd — an elegant background is 2-4 well-placed shapes, not a busy scatter.
+  SIZE TIERS — vary across at least two tiers per deck:
+    Large anchor    350–620 px  — the hero shape; most of it bleeds off a corner
+    Medium balance  200–360 px  — counter-weight in the opposite corner or edge
+    Small accent     80–160 px  — a dot, ring, or star for visual punctuation
+    Full-edge strip  thickness 8–16 px, length = full canvas width (1920) or height (1080)
+
+  OPACITY LEVELS:
+    Soft fill shapes     0.08–0.18  — subtle, behind content
+    Medium accents       0.15–0.26  — slightly bolder
+    Full-opacity strips  1.0        — crisp anchor line (thin strips only)
+    Vivid accent pop     0.70–1.0   — ONE small shape (≤160 px) at near-full opacity for punch
+
+  STROKE / BORDER (optional — use at most one per deck for an elegant detail):
+    Ghost ring / outlined star: fill=null, stroke=accent, strokeWidth=2, opacity=0.20–0.40
+    Gives a lightweight architectural feel — pair with a larger filled anchor in the opposite corner
+    Works on any shape type (ellipse, star, polygon)
+
+  DARK THEMES: shapes use fill="#ffffff" opacity 0.04–0.09; one small vivid-accent dot at 0.80–1.0 is the pop.
+
+STEP 3 — EDGE BLEED PLACEMENT. Shapes flush with the canvas edge look rigid. For a professional, organic feel let shapes hang partially OFF the canvas — the renderer clips overhang, creating a natural "peeking" look.
+
+  BLEED FORMULA (apply these for corner placements):
+    TL corner:  x = -(w × 0.25),   y = -(h × 0.25)          e.g. 400×400 → x=-100, y=-100
+    TR corner:  x = 1920-(w×0.75), y = -(h × 0.25)           e.g. 400×400 → x=1620, y=-100
+    BL corner:  x = -(w × 0.25),   y = 1080-(h × 0.75)       e.g. 440×440 → x=-110, y=750
+    BR corner:  x = 1920-(w×0.75), y = 1080-(h × 0.75)       e.g. 480×480 → x=1560, y=720
+    Left-mid:   x = -(w × 0.50),   y = 540-(h/2)             e.g. 200×200 → x=-100, y=440
+    Right-mid:  x = 1920-(w×0.50), y = 540-(h/2)             e.g. 160×160 → x=1840, y=460
+
+  FULL-EDGE STRIPS (span the full canvas edge — no bleed needed):
+    Top strip:    { x:0, y:0,   width:1920, height:10,  opacity:1 }           crisp top rule
+    Left rule:    { x:0, y:0,   width:12,   height:1080, opacity:1 }          vertical accent
+    Bottom band:  { x:0, y:900, width:1920, height:140, rotation:-10, opacity:0.14 }  diagonal sweep
+
+  BALANCE RULE: anchor a LARGE shape (350–600 px) in one corner → counter with a MEDIUM shape (200–320 px) in the OPPOSITE corner → optional SMALL accent (80–160 px) on a mid-edge. Never cluster shapes on the same side. 2–4 shapes maximum — elegance comes from restraint, not volume.
 
 STEP 4 — LOCK IT IN AND REUSE IT: once you've designed the background, emit that SAME set of shapes — byte-for-byte identical x, y, width, height, fill, opacity, rotation — on EVERY slide, as the first "create" ops right after each slide's "createSlide" op. The background is the deck's constant; only the content changes slide to slide. (These are "create" element ops with type/x/y/width/height — never put aspectRatioPreset or backgroundColor on them.) The backend also replicates your slide-1 background onto any slide you leave bare, but you should still emit it so you control the design.
 
-BACKGROUND RECIPES BY THEME — concrete, ready-to-use starting points. Pick the one matching your topic, swap in your exact accent hex, and reuse it identically on every slide. These are DIFFERENT on purpose — a travel deck must not look like a finance deck:
-  · Tech / SaaS / AI (accent #4f46e5, softTint #c7d2fe, bg #eef2ff):
-      ellipse TR   { x:1560, y:0,   width:360, height:360, fill:accent,   opacity:0.13 }
-      ellipse BL   { x:0,    y:700, width:400, height:380, fill:softTint, opacity:0.20 }
-      ellipse CL   { x:0,    y:430, width:150, height:150, fill:accent,   opacity:0.10 }
-  · Travel / Nature / Wellness (accent #0891b2, softTint #a5f3fc, bg #ecfeff) — organic sun/horizon:
-      ellipse BR   { x:1360, y:560, width:560, height:520, fill:accent,   opacity:0.12 }
-      ellipse BR2  { x:1600, y:760, width:340, height:320, fill:softTint, opacity:0.18 }
-      ellipse TL   { x:0,    y:0,   width:300, height:300, fill:softTint, opacity:0.16 }
-  · Finance / Corporate / Legal (accent #1e3a5f, softTint #dbeafe, bg #f8fafc) — restrained & formal:
-      ellipse TR   { x:1500, y:0,   width:420, height:420, fill:accent,   opacity:0.10 }
-      rect (rule)  { x:0,    y:0,   width:12,  height:1080, fill:accent,  opacity:1 }
-  · Creative / Marketing / Media (accent #ea580c, softTint #fed7aa, bg #fff7ed) — bold & energetic:
-      rect band    { x:0,    y:880, width:1920, height:150, fill:accent,   opacity:0.13, rotation:-10 }
-      star TR      { x:1620, y:40,  width:200,  height:200, fill:accent,   opacity:0.16 }
-      ellipse BL   { x:0,    y:720, width:300,  height:300, fill:softTint, opacity:0.20 }
+BACKGROUND RECIPES BY THEME — concrete starting points using the bleed formula. Swap your exact accent hex and reuse identically on every slide. Coordinates below already apply the bleed formula so shapes hang off the canvas naturally:
+  · Tech / SaaS / AI (accent #4f46e5, softTint #c7d2fe, bg #eef2ff) — precise geometry:
+      ellipse TR  { x:1620, y:-90,  width:480, height:480, fill:accent,   opacity:0.12 }   ← 480×0.75=360 from right edge
+      ellipse BL  { x:-100, y:750,  width:400, height:400, fill:softTint, opacity:0.20 }   ← bleed TL formula on BL
+      rect strip  { x:0,    y:0,    width:1920, height:10, fill:accent,   opacity:1    }   ← top rule
+
+  · Travel / Nature / Wellness (accent #0891b2, softTint #a5f3fc, bg #ecfeff) — organic overlapping:
+      ellipse BR  { x:1500, y:720,  width:560, height:520, fill:accent,   opacity:0.13 }   ← BR bleed
+      ellipse TL  { x:-80,  y:-80,  width:360, height:360, fill:softTint, opacity:0.18 }   ← TL bleed
+      ellipse mid { x:-100, y:440,  width:200, height:200, fill:accent,   opacity:0.10 }   ← left-mid accent
+
+  · Finance / Corporate / Legal (accent #1e3a5f, softTint #dbeafe, bg #f8fafc) — restrained formal:
+      ellipse TR  { x:1590, y:-105, width:420, height:420, fill:accent,   opacity:0.09 }   ← TR bleed (ghost-light)
+      rect rule   { x:0,    y:0,    width:12,  height:1080, fill:accent,  opacity:1    }   ← left vertical rule
+      ghost ring  { x:1780, y:400,  width:160, height:160, fill:null, stroke:accent, strokeWidth:2, opacity:0.22 }  ← outlined accent
+
+  · Creative / Marketing / Media (accent #ea580c, softTint #fed7aa, bg #fff7ed) — bold diagonal:
+      rect band   { x:0,    y:900,  width:1920, height:140, fill:accent,  opacity:0.14, rotation:-10 }  ← bottom sweep
+      star TR     { x:1700, y:-50,  width:280,  height:280, fill:accent,  opacity:0.18 }   ← TR bleed star
+      ellipse BL  { x:-75,  y:780,  width:300,  height:300, fill:softTint,opacity:0.22 }   ← BL bleed
+
   · Dark / Premium / Space / Gaming (bg #0f172a, accent #38bdf8) — glowing on deep space:
-      ellipse BR   { x:1480, y:600, width:460, height:460, fill:#ffffff, opacity:0.06 }
-      ellipse TL   { x:0,    y:0,   width:300, height:300, fill:#ffffff, opacity:0.05 }
-      ellipse CR   { x:1800, y:460, width:120, height:120, fill:accent,  opacity:0.9 }
-Adapt freely — shift a shape to a different corner, swap ellipse for star/polygon, change the count. The point is that the background is deliberately designed for the topic, never a copy-paste default.
+      ellipse BR  { x:1500, y:720,  width:560, height:520, fill:#ffffff, opacity:0.05 }    ← large soft glow
+      ellipse TL  { x:-75,  y:-75,  width:300, height:300, fill:#ffffff, opacity:0.04 }    ← subtle TL glow
+      star right  { x:1840, y:460,  width:140, height:140, fill:accent,  opacity:0.90 }    ← vivid accent pop
+
+Adapt freely — use these as a starting point, not a template to copy verbatim. Mix shape types (ellipses, rects, stars, polygons, lines) and NEVER use all-ellipse compositions for every theme.
 
 WHAT YOU CAN AND CANNOT STYLE (the renderer ignores anything else, so don't waste operations on it):
-- Available: "fill", "stroke", "strokeWidth", "cornerRadius" (ONLY on "rect" — it is ignored on every other shape), "opacity", "rotation", and for text "fontSize"/"fontStyle"/"align"/"lineHeight"/"fontFamily".
-- NOT available anywhere: shadows, gradients, blur, borders on non-rect shapes with rounded corners, letter-spacing, text vertical-centering, text padding. Never try to fake a gradient by stacking many slightly-different rectangles.
+- Available on shapes: "fill", "stroke", "strokeWidth", "opacity", "rotation". "cornerRadius" works ONLY on "rect". All other shape types ignore it.
+- Stroke usage: set "stroke" to a hex color and "strokeWidth" (1–6) to draw an outline. To make a ghost/outlined shape with no fill, set fill=null and use stroke+strokeWidth. Example ghost circle: { type:"ellipse", fill:null, stroke:"#4f46e5", strokeWidth:2, opacity:0.30 }.
+- Available on text: "fontSize", "fontStyle", "align", "lineHeight", "fontFamily", plus "fill" for color.
+- NOT available anywhere: shadows, gradients, blur, letter-spacing, text vertical-centering, text padding. Never fake a gradient with stacked rectangles.
 - Fonts: default is Inter (a clean sans — just omit "fontFamily" to get it). For an editorial/serif feel use "Georgia, serif". Use ONE font family for the whole deck.
 - Text elements auto-grow downward from "y"; there is no vertical centering. To visually center a line inside a band or card of height H starting at bandY, set the text's y ≈ bandY + (H - fontSize * 1.2) / 2.
 - "icon" elements ignore "fill" — an icon renders in its own emoji colors, so never expect a tinted icon.
