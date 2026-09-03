@@ -21,6 +21,8 @@ import { mediaUpload } from "@/modules/media/media.upload.js";
 import { listAiMessages, sendAiMessage } from "@/modules/ai/ai.controller.js";
 import { sendAiMessageRestSchema } from "@/modules/ai/ai.validation.js";
 
+import { exportPptx } from "@/modules/export/export.controller.js";
+
 import {
   addProjectMembers,
   createProject,
@@ -128,5 +130,8 @@ router.post(
   validateBody(sendAiMessageRestSchema),
   sendAiMessage,
 );
+
+// Export — renders every slide server-side and returns the file as a binary response.
+router.get("/:projectId/export/pptx", validateParams(projectIdParamsSchema), exportPptx);
 
 export default router;
