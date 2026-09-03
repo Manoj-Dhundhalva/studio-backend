@@ -711,61 +711,127 @@ const extractAccentColor = (operations: TAiOperation[]): string => {
 };
 
 /**
- * True when ops already contain a low-opacity corner/edge shape for the given
- * slide. When `exact` is false (default), ops with no slideId are treated as
- * targeting `slideId` — this handles active-slide ops where the AI omits the
- * field. When `exact` is true, only ops with an explicit matching slideId count
- * — use this for newly-created slides whose ops always carry an explicit id.
+ * Returns all background decorative shapes from ops targeting a specific slide.
+ *
+ * Background shapes are low-opacity (< 0.4) rects or ellipses that sit in a
+ * corner/edge zone, plus the thin full-width top accent strip.
+ *
+ * When `exact` is false (default), ops with no slideId resolve to the given
+ * slideId — needed for the active slide where the AI often omits the field.
+ * When `exact` is true, only ops with an explicit matching slideId are included
+ * — use this for new slides whose ops always carry an explicit AI-invented id.
  */
-const hasBackgroundShapes = (
+const extractBackgroundShapesForSlide = (
   operations: TAiOperation[],
   slideId: string,
   slideWidth: number,
   slideHeight: number,
   exact = false,
-): boolean => {
+): Extract<TAiOperation, { action: "create" }>[] => {
   const mx = slideWidth * 0.18;
   const my = slideHeight * 0.18;
 
-  return operations.some((op) => {
+  return operations.filter((op): op is Extract<TAiOperation, { action: "create" }> => {
     if (op.action !== "create") return false;
     const opSlide = exact ? op.slideId : (op.slideId ?? slideId);
     if (opSlide !== slideId) return false;
     if (op.type !== "ellipse" && op.type !== "rect") return false;
     if ((op.opacity ?? 1) >= 0.4) return false;
-    // Must touch at least one horizontal edge AND one vertical edge zone.
+    // Thin full-width strip at the very top counts as a background shape.
+    const isTopStrip = op.y <= 5 && op.height <= 15 && op.width >= slideWidth * 0.8;
     const hEdge = op.x < mx || op.x + op.width > slideWidth - mx;
     const vEdge = op.y < my || op.y + op.height > slideHeight - my;
-    return hEdge && vEdge;
+    return isTopStrip || (hEdge && vEdge);
   });
 };
 
 /**
- * True when ops already set a non-white backgroundColor on the given slide,
- * either via a `createSlide` op (for new slides) or an `updateSlide` op.
+ * Clones a set of background shapes onto a different slide, assigning fresh
+ * elementIds. Used to replicate the AI's theme-designed template to slides
+ * that are missing a background.
  */
-const hasNonWhiteBackgroundOp = (operations: TAiOperation[], slideId: string): boolean =>
-  operations.some(
-    (op) =>
-      (op.action === "updateSlide" || op.action === "createSlide") &&
-      op.slideId === slideId &&
-      !!op.backgroundColor &&
-      !/^#?(f{3}|f{6})$/i.test(op.backgroundColor),
-  );
+const cloneBackgroundShapesToSlide = (
+  shapes: Extract<TAiOperation, { action: "create" }>[],
+  targetSlideId: string,
+): TAiOperation[] =>
+  shapes.map((shape) => ({
+    ...shape,
+    slideId: targetSlideId,
+    elementId: `bg-${crypto.randomUUID().slice(0, 8)}`,
+  }));
 
 /**
- * Builds the standard two-color background template for a slide.
+ * One decorative shape in the 1920×1080 reference frame. `fill` names a palette
+ * slot resolved at build time; coordinates are scaled to the real slide size.
+ */
+type TBgShapeSpec = {
+  type: "ellipse" | "rect" | "star";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  fill: "primary" | "secondary";
+  opacity: number;
+  rotation?: number;
+};
+
+/**
+ * Fallback background arrangements, used ONLY when the AI produced no background
+ * shapes of its own. Several distinct layouts exist so the safety net doesn't
+ * stamp the same "corner circle + top bar" onto every deck — one is chosen
+ * deterministically from the accent color, so all slides in a deck share the
+ * same layout (consistent) while different themes get different looks.
  *
- * Uses a primary (darker) and secondary (lighter tint) color to create visual
- * depth. Coordinates are scaled from the 1920×1080 reference so they work on
- * any slide size. All four shapes are guaranteed within canvas bounds because
- * `applyOperations` clips them via `fitWithinCanvas`.
- *
- * Layout:
- *  - BR large ellipse  — primary, low opacity  → dominant corner anchor
- *  - TL medium ellipse — secondary, soft       → opposite-corner balance
- *  - TR small ellipse  — secondary, subtle     → top-right depth
- *  - Top strip         — primary, full opacity → deck's visual spine
+ * All coordinates keep shapes fully within the 1920×1080 frame (x+w ≤ 1920,
+ * y+h ≤ 1080) because `fitWithinCanvas` pulls any out-of-bounds element back
+ * inside, which would otherwise reposition a shape meant to sit in a corner.
+ */
+const BG_ARRANGEMENTS: TBgShapeSpec[][] = [
+  // 0 — Corner orbit: BR anchor + TL balance + TR accent + top spine.
+  [
+    { type: "ellipse", x: 1480, y: 620, w: 440, h: 440, fill: "primary", opacity: 0.14 },
+    { type: "ellipse", x: 0, y: 0, w: 300, h: 300, fill: "secondary", opacity: 0.22 },
+    { type: "ellipse", x: 1700, y: 0, w: 220, h: 220, fill: "secondary", opacity: 0.15 },
+    { type: "rect", x: 0, y: 0, w: 1920, h: 10, fill: "primary", opacity: 1 },
+  ],
+  // 1 — Diagonal flow: TR + opposite BL + left-edge accent, no spine.
+  [
+    { type: "ellipse", x: 1620, y: 0, w: 300, h: 300, fill: "primary", opacity: 0.13 },
+    { type: "ellipse", x: 0, y: 660, w: 420, h: 420, fill: "secondary", opacity: 0.2 },
+    { type: "ellipse", x: 0, y: 440, w: 160, h: 160, fill: "primary", opacity: 0.1 },
+  ],
+  // 2 — Editorial: bottom diagonal band + TL accent + left rule.
+  [
+    { type: "rect", x: 0, y: 900, w: 1920, h: 120, fill: "secondary", opacity: 0.16, rotation: -10 },
+    { type: "ellipse", x: 0, y: 0, w: 240, h: 240, fill: "primary", opacity: 0.12 },
+    { type: "rect", x: 0, y: 0, w: 14, h: 1080, fill: "primary", opacity: 1 },
+  ],
+  // 3 — Accent star: BR star + TL balance + CR dot + top spine.
+  [
+    { type: "star", x: 1500, y: 640, w: 420, h: 420, fill: "primary", opacity: 0.12 },
+    { type: "ellipse", x: 0, y: 0, w: 300, h: 300, fill: "secondary", opacity: 0.2 },
+    { type: "ellipse", x: 1780, y: 460, w: 140, h: 140, fill: "primary", opacity: 0.1 },
+    { type: "rect", x: 0, y: 0, w: 1920, h: 10, fill: "primary", opacity: 1 },
+  ],
+  // 4 — Minimal: one soft TL anchor + a small BR accent, lots of space.
+  [
+    { type: "ellipse", x: 0, y: 0, w: 380, h: 380, fill: "secondary", opacity: 0.18 },
+    { type: "ellipse", x: 1660, y: 760, w: 260, h: 260, fill: "primary", opacity: 0.12 },
+  ],
+];
+
+/** Small deterministic seed from a hex color, so a theme maps to one layout. */
+const colorSeed = (hex: string): number => {
+  let sum = 0;
+  for (const ch of hex) sum += ch.charCodeAt(0);
+  return sum;
+};
+
+/**
+ * Builds a fallback two-color background for a slide, choosing a layout by the
+ * accent color so different themes get visibly different backgrounds while a
+ * single deck stays internally consistent. Only used when the AI supplied no
+ * background of its own.
  */
 const buildBackgroundTemplate = (
   canvasId: string,
@@ -778,60 +844,22 @@ const buildBackgroundTemplate = (
   const sy = slideHeight / 1080;
   const uid = () => crypto.randomUUID().slice(0, 8);
 
-  return [
-    // Large ellipse in the bottom-right corner — primary (darker) accent.
-    {
-      action: "create",
-      slideId: canvasId,
-      elementId: `bg-br-${uid()}`,
-      type: "ellipse",
-      x: Math.round(1480 * sx),
-      y: Math.round(620 * sy),
-      width: Math.round(440 * sx),
-      height: Math.round(440 * sy),
-      fill: primaryColor,
-      opacity: 0.14,
-    },
-    // Medium ellipse in the top-left corner — secondary (lighter) tint.
-    {
-      action: "create",
-      slideId: canvasId,
-      elementId: `bg-tl-${uid()}`,
-      type: "ellipse",
-      x: 0,
-      y: 0,
-      width: Math.round(300 * sx),
-      height: Math.round(300 * sy),
-      fill: secondaryColor,
-      opacity: 0.22,
-    },
-    // Small ellipse in the top-right corner — secondary tint, subtle depth.
-    {
-      action: "create",
-      slideId: canvasId,
-      elementId: `bg-tr-${uid()}`,
-      type: "ellipse",
-      x: Math.round(1700 * sx),
-      y: 0,
-      width: Math.round(220 * sx),
-      height: Math.round(220 * sy),
-      fill: secondaryColor,
-      opacity: 0.15,
-    },
-    // Full-width accent strip along the top edge — primary at full opacity.
-    {
-      action: "create",
-      slideId: canvasId,
-      elementId: `bg-strip-${uid()}`,
-      type: "rect",
-      x: 0,
-      y: 0,
-      width: slideWidth,
-      height: Math.max(8, Math.round(10 * sy)),
-      fill: primaryColor,
-      opacity: 1,
-    },
-  ];
+  const arrangement =
+    BG_ARRANGEMENTS[colorSeed(primaryColor) % BG_ARRANGEMENTS.length] ?? BG_ARRANGEMENTS[0]!;
+
+  return arrangement.map((spec) => ({
+    action: "create",
+    slideId: canvasId,
+    elementId: `bg-${uid()}`,
+    type: spec.type,
+    x: Math.round(spec.x * sx),
+    y: Math.round(spec.y * sy),
+    width: Math.round(spec.w * sx),
+    height: Math.round(spec.h * sy),
+    fill: spec.fill === "primary" ? primaryColor : secondaryColor,
+    opacity: spec.opacity,
+    ...(spec.rotation !== undefined ? { rotation: spec.rotation } : {}),
+  }));
 };
 
 /**
@@ -971,25 +999,19 @@ export const sendAiMessage = async (req: Request<ProjectIdParams, unknown, SendA
     const guarded = guardDeckDeletions(aiResponse.operations, slides.length);
 
     // ── Background enforcement ────────────────────────────────────────────────
-    // The theme's primary color is extracted from the AI's element fills, then
-    // used to derive the full two-color palette server-side. ONE canonical color
-    // is written unconditionally to every slide so backgrounds are always
-    // identical regardless of what the AI set per slide.
+    // The AI owns the background design: it picks the color and shapes based on
+    // the presentation's theme. The backend's role is:
+    //   1. Extract the AI's reference background (color + shapes) from its ops
+    //   2. Clone that design identically to every slide missing a background
+    //   3. Normalize the background color so every slide is identical
+    //   4. Fall back to a hardcoded two-color template ONLY if AI provided nothing
+    //
+    // This keeps backgrounds truly theme-aware (the AI picks travel-cyan vs
+    // corporate-navy vs creative-orange) while guaranteeing consistency.
 
-    // Primary = most frequent accent-like fill in AI ops (falls back to indigo).
+    // Fallback palette — used only when AI produced no usable background shapes.
     const primaryColor = extractAccentColor(guarded.operations);
-    // Secondary = a medium tint of primary (50 % toward white) — used for the
-    // lighter background shapes (TL and TR ellipses).
     const secondaryColor = lightenColor(primaryColor, 0.5);
-
-    // Canonical deck background: use an existing non-white slide color to keep
-    // the theme stable across requests; otherwise derive a very light tint of
-    // the primary so the background is on-theme but still readable.
-    const existingNonWhiteBg = slides.find(
-      (s) => s.backgroundColor && !/^#?(f{3}|f{6})$/i.test(s.backgroundColor),
-    )?.backgroundColor;
-
-    const deckBgColor = existingNonWhiteBg ?? lightenColor(primaryColor, 0.88);
 
     // AI-invented slide ids for every slide this request creates.
     const newAiSlideIds = guarded.operations
@@ -1000,24 +1022,82 @@ export const sendAiMessage = async (req: Request<ProjectIdParams, unknown, SendA
       (op) => op.action === "create" && (op.slideId === undefined || op.slideId === canvasId),
     );
 
+    // Find the AI's reference background shapes — scanned from the first new
+    // slide that has them. New slides are checked with exact=true (AI always sets
+    // slideId on their ops); active slide uses exact=false (slideId may be omitted).
+    // A usable reference must have at least one non-white shape — the cover
+    // slide's decorative shapes are white (they sit on an accent wash), and
+    // cloning those onto a light content slide would render them invisible. So
+    // white-only shape sets are skipped in favor of a real content template.
+    const isWhiteFill = (hex?: string | null): boolean => !hex || /^#?(f{3}|f{6})$/i.test(hex);
+    const isUsableReference = (shapes: Extract<TAiOperation, { action: "create" }>[]): boolean =>
+      shapes.some((s) => !isWhiteFill(s.fill));
+
+    const referenceShapes = (() => {
+      let whiteOnlyFallback: Extract<TAiOperation, { action: "create" }>[] | null = null;
+
+      for (const aiSlideId of newAiSlideIds) {
+        const shapes = extractBackgroundShapesForSlide(
+          guarded.operations, aiSlideId, canvas.width, canvas.height, true,
+        );
+        if (shapes.length === 0) continue;
+        if (isUsableReference(shapes)) return shapes;
+        whiteOnlyFallback ??= shapes;
+      }
+      if (hasActiveSlideCreates) {
+        const shapes = extractBackgroundShapesForSlide(
+          guarded.operations, canvasId, canvas.width, canvas.height, false,
+        );
+        if (shapes.length > 0 && isUsableReference(shapes)) return shapes;
+      }
+      // Prefer a real content template; fall back to white-only only if that's
+      // all the AI produced; else null → hardcoded template is built instead.
+      return whiteOnlyFallback;
+    })();
+
+    // Background color priority — the AI's decision comes FIRST. The backend
+    // never overrides a colour the AI deliberately chose; it only fills in when
+    // the AI made no choice at all:
+    //   1. AI's explicit choice           → the AI owns this decision (theme-aware)
+    //   2. Existing non-white deck color  → preserves theme when the AI didn't set one
+    //   3. Tinted fallback from primary   → last resort, only if nothing else exists
+    const aiChosenBgColor = guarded.operations.find(
+      (op): op is Extract<TAiOperation, { action: "createSlide" | "updateSlide" }> =>
+        (op.action === "createSlide" || op.action === "updateSlide") &&
+        !!op.backgroundColor &&
+        !/^#?(f{3}|f{6})$/i.test(op.backgroundColor),
+    )?.backgroundColor;
+
+    const existingNonWhiteBg = slides.find(
+      (s) => s.backgroundColor && !/^#?(f{3}|f{6})$/i.test(s.backgroundColor),
+    )?.backgroundColor;
+
+    const deckBgColor = aiChosenBgColor ?? existingNonWhiteBg ?? lightenColor(primaryColor, 0.88);
+
+    /** Shapes to inject for a slide missing a background. */
+    const bgShapesFor = (slideId: string): TAiOperation[] =>
+      referenceShapes
+        ? cloneBackgroundShapesToSlide(referenceShapes, slideId)
+        : buildBackgroundTemplate(slideId, canvas.width, canvas.height, primaryColor, secondaryColor);
+
     let finalOperations = guarded.operations;
 
     if (hasActiveSlideCreates) {
-      // 1. Prepend background shapes if the AI didn't generate any.
-      if (!hasBackgroundShapes(finalOperations, canvasId, canvas.width, canvas.height)) {
-        const bgShapes = buildBackgroundTemplate(canvasId, canvas.width, canvas.height, primaryColor, secondaryColor);
-        finalOperations = [...bgShapes, ...finalOperations];
+      // 1. Inject background shapes if the AI didn't include any for this slide.
+      const activeHasShapes =
+        extractBackgroundShapesForSlide(finalOperations, canvasId, canvas.width, canvas.height).length > 0;
+      if (!activeHasShapes) {
+        finalOperations = [...bgShapesFor(canvasId), ...finalOperations];
       }
 
-      // 2. Always write the canonical deck color — unconditional so it overrides
-      //    any stale or AI-set color on the active slide.
+      // 2. Normalize the background color — unconditional so every slide matches.
       finalOperations = [
         ...finalOperations,
         { action: "updateSlide", slideId: canvasId, backgroundColor: deckBgColor },
       ];
 
-      // 3. Full-replacement model: wipe existing elements so AI's fresh layout
-      //    starts from a clean slate (background shapes are re-created above).
+      // 3. Full-replacement model: wipe existing elements so the AI's fresh layout
+      //    starts from a clean slate.
       if (activeElements.length > 0) {
         const existingElementIds = activeElements.map((el) => el.elementId);
         await canvasCacheService.deleteElements(projectId, canvasId, existingElementIds);
@@ -1027,27 +1107,28 @@ export const sendAiMessage = async (req: Request<ProjectIdParams, unknown, SendA
       }
     }
 
-    // Same treatment for every newly created slide. Background shapes go in
-    // immediately after the createSlide op (below content in z-order). The
-    // canonical color is always overwritten — no conditional — so the AI cannot
-    // drift each slide to a slightly different shade.
+    // Apply the same background to every newly created slide.
+    // Shapes go in immediately after the slide's createSlide op so they land
+    // below content elements in z-order.
     for (const aiSlideId of newAiSlideIds) {
-      if (!hasBackgroundShapes(finalOperations, aiSlideId, canvas.width, canvas.height, true)) {
-        const bgShapes = buildBackgroundTemplate(aiSlideId, canvas.width, canvas.height, primaryColor, secondaryColor);
+      const slideHasShapes =
+        extractBackgroundShapesForSlide(finalOperations, aiSlideId, canvas.width, canvas.height, true).length > 0;
+      if (!slideHasShapes) {
+        const bgShapes = bgShapesFor(aiSlideId);
         const createIdx = finalOperations.findIndex(
           (op) => op.action === "createSlide" && op.slideId === aiSlideId,
         );
-        if (createIdx !== -1) {
-          finalOperations = [
-            ...finalOperations.slice(0, createIdx + 1),
-            ...bgShapes,
-            ...finalOperations.slice(createIdx + 1),
-          ];
-        } else {
-          finalOperations = [...bgShapes, ...finalOperations];
-        }
+        finalOperations =
+          createIdx !== -1
+            ? [
+                ...finalOperations.slice(0, createIdx + 1),
+                ...bgShapes,
+                ...finalOperations.slice(createIdx + 1),
+              ]
+            : [...bgShapes, ...finalOperations];
       }
 
+      // Normalize color on every new slide — same value, no drift.
       finalOperations = [
         ...finalOperations,
         { action: "updateSlide", slideId: aiSlideId, backgroundColor: deckBgColor },

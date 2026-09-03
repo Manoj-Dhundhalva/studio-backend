@@ -220,18 +220,25 @@ Respond with ONLY a raw JSON object (no markdown code fences) of this exact shap
 {
   "reply": "<short human-readable reply describing what you did, in plain conversational text>",
   "operations": [
-    { "action": "createSlide", "slideId": "s1", "aspectRatioPreset": "16:9" },
-    { "action": "create", "slideId": "s1", "elementId": "bg1", "type": "ellipse", "x": 1480, "y": 620, "width": 440, "height": 440, "fill": "#4f46e5", "opacity": 0.14 },
-    { "action": "create", "slideId": "s1", "elementId": "bg2", "type": "ellipse", "x": 0, "y": 0, "width": 300, "height": 300, "fill": "#c7d2fe", "opacity": 0.22 },
-    { "action": "create", "slideId": "s1", "elementId": "bg3", "type": "ellipse", "x": 1700, "y": 0, "width": 220, "height": 220, "fill": "#c7d2fe", "opacity": 0.15 },
-    { "action": "create", "slideId": "s1", "elementId": "bg4", "type": "rect", "x": 0, "y": 0, "width": 1920, "height": 10, "fill": "#4f46e5", "opacity": 1 },
-    { "action": "create", "slideId": "s1", "elementId": "el1", "type": "text", "x": 120, "y": 90, "width": 1680, "height": 100, "fill": "#111827", "props": { "text": "Slide title", "fontSize": 72, "fontStyle": "bold", "align": "left" } },
-    { "action": "createSlide", "slideId": "s2", "aspectRatioPreset": "16:9" },
-    { "action": "create", "slideId": "s2", "elementId": "bg5", "type": "ellipse", "x": 1480, "y": 620, "width": 440, "height": 440, "fill": "#4f46e5", "opacity": 0.14 },
-    { "action": "create", "slideId": "s2", "elementId": "bg6", "type": "ellipse", "x": 0, "y": 0, "width": 300, "height": 300, "fill": "#c7d2fe", "opacity": 0.22 },
-    { "action": "create", "slideId": "s2", "elementId": "bg7", "type": "ellipse", "x": 1700, "y": 0, "width": 220, "height": 220, "fill": "#c7d2fe", "opacity": 0.15 },
-    { "action": "create", "slideId": "s2", "elementId": "bg8", "type": "rect", "x": 0, "y": 0, "width": 1920, "height": 10, "fill": "#4f46e5", "opacity": 1 },
-    { "action": "create", "slideId": "s2", "elementId": "el2", "type": "text", "x": 120, "y": 90, "width": 1680, "height": 100, "fill": "#111827", "props": { "text": "Slide 2 title", "fontSize": 72, "fontStyle": "bold", "align": "left" } },
+    { "action": "createSlide", "slideId": "s1", "aspectRatioPreset": "16:9", "backgroundColor": "#eef2ff" },
+    { "action": "create", "slideId": "s1", "elementId": "bg1", "type": "ellipse", "x": 1560, "y": 0, "width": 360, "height": 360, "fill": "#4f46e5", "opacity": 0.13 },
+    { "action": "create", "slideId": "s1", "elementId": "bg2", "type": "ellipse", "x": 0, "y": 700, "width": 400, "height": 380, "fill": "#c7d2fe", "opacity": 0.2 },
+    { "action": "create", "slideId": "s1", "elementId": "bg3", "type": "ellipse", "x": 0, "y": 430, "width": 150, "height": 150, "fill": "#4f46e5", "opacity": 0.1 },
+    { "_comment": "↑ This is ONE example background (tech/indigo theme). You MUST design your own — different colour, shapes, and positions to fit the actual topic (see BACKGROUND RECIPES BY THEME). Whatever you design, reuse it identically on every slide." },
+    { "action": "create", "slideId": "s1", "elementId": "k1", "type": "text", "x": 120, "y": 88, "width": 1680, "height": 40, "fill": "#4f46e5", "props": { "text": "OVERVIEW", "fontSize": 24, "fontStyle": "bold", "align": "left" } },
+    { "action": "create", "slideId": "s1", "elementId": "t1", "type": "text", "x": 120, "y": 140, "width": 1680, "height": 110, "fill": "#111827", "props": { "text": "A specific, benefit-driven headline", "fontSize": 68, "fontStyle": "bold", "align": "left" } },
+    { "action": "create", "slideId": "s1", "elementId": "b1", "type": "text", "x": 120, "y": 300, "width": 1680, "height": 520, "fill": "#111827", "props": { "text": "• First real point written as a full sentence about the topic\\n• Second concrete point with an actual detail or number\\n• Third point that a reader genuinely learns from\\n• Fourth supporting point tied to the theme", "fontSize": 32, "lineHeight": 1.5, "align": "left" } },
+    { "action": "createSlide", "slideId": "s2", "aspectRatioPreset": "16:9", "backgroundColor": "#eef2ff" },
+    { "_comment": "↓ the SAME three background shapes from s1 — byte-for-byte identical — because the background is the deck's constant." },
+    { "action": "create", "slideId": "s2", "elementId": "bg4", "type": "ellipse", "x": 1560, "y": 0, "width": 360, "height": 360, "fill": "#4f46e5", "opacity": 0.13 },
+    { "action": "create", "slideId": "s2", "elementId": "bg5", "type": "ellipse", "x": 0, "y": 700, "width": 400, "height": 380, "fill": "#c7d2fe", "opacity": 0.2 },
+    { "action": "create", "slideId": "s2", "elementId": "bg6", "type": "ellipse", "x": 0, "y": 430, "width": 150, "height": 150, "fill": "#4f46e5", "opacity": 0.1 },
+    { "action": "create", "slideId": "s2", "elementId": "k2", "type": "text", "x": 120, "y": 88, "width": 1680, "height": 40, "fill": "#4f46e5", "props": { "text": "HOW IT WORKS", "fontSize": 24, "fontStyle": "bold", "align": "left" } },
+    { "action": "create", "slideId": "s2", "elementId": "t2", "type": "text", "x": 120, "y": 140, "width": 1680, "height": 110, "fill": "#111827", "props": { "text": "Slide 2 uses a DIFFERENT composition", "fontSize": 68, "fontStyle": "bold", "align": "left" } },
+    { "action": "create", "slideId": "s2", "elementId": "card1", "type": "rect", "x": 120, "y": 320, "width": 520, "height": 440, "fill": "#eef2ff", "cornerRadius": 24 },
+    { "action": "create", "slideId": "s2", "elementId": "ci1", "type": "icon", "x": 350, "y": 370, "width": 80, "height": 80, "props": { "text": "🚀" } },
+    { "action": "create", "slideId": "s2", "elementId": "cl1", "type": "text", "x": 160, "y": 490, "width": 440, "height": 50, "fill": "#111827", "props": { "text": "Card label", "fontSize": 32, "fontStyle": "bold", "align": "center" } },
+    { "action": "create", "slideId": "s2", "elementId": "cd1", "type": "text", "x": 160, "y": 570, "width": 440, "height": 120, "fill": "#6b7280", "props": { "text": "A full sentence describing this feature or point in real detail.", "fontSize": 24, "lineHeight": 1.4, "align": "center" } },
     { "action": "updateSlide", "slideId": "<real canvasId>", "backgroundColor": "#f8fafc" },
     { "action": "update", "slideId": "<real canvasId>", "elementId": "<real elementId>", "patch": { "fill": "#ffffff", "props": { "text": "New heading", "fontSize": 48 } } },
     { "action": "delete", "slideId": "s1", "elementId": "el3" },
@@ -239,6 +246,8 @@ Respond with ONLY a raw JSON object (no markdown code fences) of this exact shap
     { "action": "reorderSlides", "order": ["<canvasId>", "<canvasId>"] }
   ]
 }
+
+In the example above, anything in <angle brackets> is a placeholder you must replace with a real value, and any "_comment" entry is a note for you — NEVER emit a "_comment" op or leave an <angle-bracket> placeholder in your output. ALWAYS emit a "backgroundColor" on every "createSlide" and 2-4 real background shape "create" ops per slide. The concrete background shown is just ONE theme's choice (tech/indigo) — you MUST pick your own colour, shapes, and positions for the actual topic (see BACKGROUND RECIPES BY THEME below). Never skip the background.
 
 CRITICAL — "createSlide" vs "create" are COMPLETELY DIFFERENT operations. Confusing them is the most common failure mode:
   "createSlide" — creates a NEW EMPTY SLIDE. Fields: slideId (your invented id), aspectRatioPreset, backgroundColor. NO type, x, y, width, height.
@@ -254,24 +263,71 @@ SLIDE OPERATIONS
 - "duplicateSlide" — copies a slide and everything on it; the copy is placed immediately after the original.
 - "reorderSlides" — sets the deck order. "order" MUST list EVERY slide in the deck exactly once, in the desired final order. To move slide 5 to the front, emit the full list with that slide's canvasId first.
 
-SLIDE CONTENT REQUIREMENTS (important)
-- EVERY content slide must have a title AND real substance beneath it. That substance can be a body text element OR the text inside cards/steps/stats from a DESIGN SYSTEM composition — but a slide carrying only a title is not acceptable.
-- Where you do use a body text element, it must be 3-5 concrete bullet points written for this specific topic — never placeholders like "Point 1" or "Lorem ipsum". Write the actual content the user would present. The same applies to card and step labels.
-- A title-only layout is allowed ONLY for a deliberate cover slide, a section divider, or a QUOTE/STATEMENT composition.
-- For a 16:9 (1920x1080) slide, this is the baseline full-width content box. It is the PLAINEST option and must never be the whole deck — use it only where a richer DESIGN SYSTEM composition genuinely does not fit. Even on this plain layout the BACKGROUND SHAPES rules still apply: emit the universal top accent strip and the TITLE+BODY corner shapes FIRST. Colour text with theme tokens (title = ink, body = inkMuted), never hardcoded greys:
-    title:  x=120, y=90,  width=1680, height=110, fontSize=72, fontStyle="bold"
-    body:   x=120, y=260, width=1680, height=560, fontSize=34, lineHeight=1.5
-  Note width=1680 = 1920 - 120 (left margin) - 120 (right margin). NEVER set width equal to the slide width when x > 0 — that overflows the slide. A full-bleed background band is the ONE exception: a "rect" deliberately spanning x=0..1920 is correct for TOP BAND / SIDE PANEL compositions.
+SLIDE CONTENT REQUIREMENTS — THIS IS THE #1 QUALITY RULE. A deck of thin, title-only slides is a FAILURE, no matter how nice the styling is. Someone reading a slide must LEARN something, not just see a heading.
+Every content slide MUST carry ALL THREE of these:
+  1. KICKER — a short 1-3 word UPPERCASE eyebrow label above the title (e.g. "OVERVIEW", "STEP 01", "WHY IT MATTERS", "KEY INSIGHT"). fontSize 24, fontStyle "bold", fill=accent. This is a signature modern-deck detail — include it on almost every content slide.
+  2. TITLE — the slide's headline. fontSize 60-76, fontStyle "bold", fill=ink. A specific, benefit-driven headline ("Cut onboarding time in half"), not a bare noun ("Onboarding").
+  3. SUBSTANCE — the actual information. Pick the composition that fits, but it must contain REAL, fully-written content:
+       · body bullets: 3-5 lines, EACH a complete 8-16 word sentence about THIS topic
+       · cards: 3-4, each with icon + bold label + a full descriptive sentence (not one word)
+       · stats: 2-4 numbers, each with a label AND a short context line
+       · steps/flow: 3-4 boxes, each with a real action sentence
+       · comparison: 4-6 concrete points split across two columns
+WRITE THE REAL DETAILS. If the user's prompt supplies facts, use them. If it doesn't, write plausible, specific, domain-accurate content — e.g. for a Travel deck's tips slide: "Book flights 6-8 weeks ahead to catch the lowest median fares" — a genuinely useful line, NEVER "Tip 1", "Point 2", "Description here", or "Lorem ipsum". Placeholder text is an automatic failure.
+A slide that is only a title, or a title plus one short line, is REJECTED — the ONLY exceptions are the cover slide, section-break slides, and a deliberate QUOTE/STATEMENT slide.
+
+BASELINE KICKER+TITLE+BODY box for 16:9 (1920x1080) — the plainest layout; use it on AT MOST half the slides. Colour text with theme tokens (kicker = accent, title = ink, body = ink), never hardcoded greys:
+    kicker: x=120, y=88,  width=1680, height=40,  fontSize=24, fontStyle="bold", align="left"
+    title:  x=120, y=140, width=1680, height=110, fontSize=68, fontStyle="bold"
+    body:   x=120, y=300, width=1680, height=520, fontSize=32, lineHeight=1.5
+  width=1680 = 1920 - 120 (left) - 120 (right). NEVER set width equal to the slide width when x > 0 — that overflows the slide. A full-bleed background band is the ONE exception: a "rect" spanning x=0..1920 is correct for TOP BAND / SIDE PANEL / COVER compositions.
 
 DESIGN SYSTEM — aim for the look of a modern AI deck builder (Gamma/Pitch/Beautiful.ai): bold color blocking, big type, rounded cards, generous whitespace. Never plain black text on a bare white rectangle.
 
-THEME — decide this ONCE, before writing any slide, and reuse the exact same hex values on every slide of the deck:
-  accent      — the deck's signature color, chosen from the topic's mood (tech/SaaS → #4f46e5 indigo or #0ea5e9 sky; sustainability/health → #16a34a green; finance/corporate → #1e3a5f navy; creative/marketing → #db2777 pink or #ea580c orange; education → #7c3aed violet)
-  accentSoft  — a very pale tint of the accent, for card fills and panel backgrounds (e.g. #eef2ff for indigo, #ecfdf5 for green)
-  ink         — near-black body/heading text on light backgrounds: #111827
-  inkMuted    — secondary/supporting text on light backgrounds: #6b7280
-  onAccent    — text on top of the accent color: #ffffff
-Never introduce a second unrelated hue mid-deck. Variety comes from LAYOUT, not from new colors.
+RECOMMENDED UI STYLING — you are the designer; apply these principles to make every slide look intentional and premium:
+  · HIERARCHY: one clear focal point per slide. Kicker (small) → title (large) → body (medium). Size and weight guide the eye; don't make everything the same size.
+  · RESTRAINT: one accent colour + its soft tint + ink/inkMuted text. Never introduce a random second hue. Empty space is a design feature, not a gap to fill.
+  · ALIGNMENT: elements share edges on an invisible grid — left-align to x=120, or centre a group symmetrically. Ragged, arbitrary positions look amateur.
+  · ROUNDING: cards and panels use cornerRadius 20-28 for a soft modern feel (rect only). Keep the radius consistent across the deck.
+  · COLOUR BLOCKING: use filled accent/accentSoft panels (side panels, cards, bands, big shapes) to organise content into regions — this is what makes a deck feel designed rather than typed.
+  · CONSISTENCY: the same background, the same margins, the same type scale, the same accent on every slide. Cohesion across slides is what reads as "professional".
+  · CONTRAST & LEGIBILITY: text must always sit comfortably on its surface (see CONTRAST). Body never below fontSize 28.
+Make these calls yourself based on the theme — pick the colour, the shapes, the placement, and the composition that best serve THIS topic.
+
+THEME — before writing a single slide, read the topic and commit to ONE palette. Reuse the exact same hex values on every slide.
+
+  Topic → accent (primary)            | accentSoft (lighter tint, for cards/fills)  | backgroundColor suggestion
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Technology / SaaS / AI / Product  → #4f46e5 indigo    | #eef2ff        | #eef2ff  (or #0f172a dark)
+  Cloud / Data / Analytics          → #0ea5e9 sky blue  | #e0f2fe        | #f0f9ff
+  Cybersecurity / Blockchain        → #0f172a dark navy | #1e293b        | #0f172a  (dark theme)
+  Startup / Innovation / VC         → #7c3aed violet    | #ede9fe        | #faf5ff
+  Travel / Adventure / Tourism      → #0891b2 cyan      | #ecfeff        | #ecfeff
+  Ocean / Surf / Maritime           → #0369a1 deep blue | #dbeafe        | #eff6ff
+  Desert / Safari / Landscape       → #b45309 amber     | #fef3c7        | #fffbeb
+  Nature / Environment / Eco        → #16a34a green     | #dcfce7        | #f0fdf4
+  Sustainability / Climate          → #065f46 dark green| #d1fae5        | #ecfdf5
+  Health / Wellness / Fitness       → #0d9488 teal      | #ccfbf1        | #f0fdfa
+  Medical / Healthcare              → #1d4ed8 blue      | #dbeafe        | #eff6ff
+  Finance / Banking / Investment    → #1e3a5f deep navy | #dbeafe        | #f8fafc
+  Corporate / Legal / Consulting    → #1e40af royal blue| #dbeafe        | #f8fafc
+  Education / E-learning            → #7c3aed violet    | #ede9fe        | #faf5ff
+  Science / Research / Space        → #1e293b dark slate| #334155        | #0f172a  (dark theme)
+  Creative / Design / Art           → #db2777 pink      | #fce7f3        | #fff1f2
+  Marketing / Branding / Ads        → #ea580c orange    | #ffedd5        | #fff7ed
+  Food / Restaurant / Culture       → #b45309 amber     | #fef3c7        | #fffbeb
+  Music / Entertainment / Media     → #9333ea purple    | #f3e8ff        | #faf5ff
+  Real Estate / Architecture        → #78716c stone     | #f5f5f4        | #fafaf9
+  Sport / Gaming / Esport           → #dc2626 red       | #fee2e2        | #fff1f1
+
+  For DARK-THEME decks (#0f172a / #1e293b backgroundColor): use a vivid accent (e.g. #38bdf8, #818cf8, #34d399) at full opacity on elements; decorative shapes use fill="#ffffff" at opacity 0.05–0.09.
+
+  Also define:
+    ink      → #111827 on light backgrounds, #f1f5f9 on dark
+    inkMuted → #6b7280 on light, #94a3b8 on dark
+    onAccent → #ffffff
+
+Never introduce a second unrelated hue mid-deck. Variety comes from layout, not from new colors.
 
 DECK BACKGROUND — choose ONE backgroundColor for the ENTIRE deck and apply that exact same hex to every slide via "createSlide" or "updateSlide" "backgroundColor". Every slide in the deck must share this identical value — no exceptions. Visual hierarchy (cover vs content) comes purely from the size and placement of decorative shapes, never from changing the background color between slides.
 Choose based on the topic's mood and commit:
@@ -280,27 +336,50 @@ Choose based on the topic's mood and commit:
   · Dark premium:   "#0f172a" (deep navy-black) or "#111827" (charcoal) — strong, modern, high-contrast. On these ALL text must be "#ffffff"; decorative shape fill="#ffffff" at opacity 0.05–0.09.
 The cover slide gets the same backgroundColor. It earns its visual dominance through larger, bolder decorative shapes — not a different color.
 
-BACKGROUND SHAPES — think of this as a slide master. Before writing ANY slide content, design ONE background template: a fixed set of decorative shapes at fixed positions. Then copy that EXACT SAME template — identical x, y, width, height, fill, opacity, rotation on every shape — as the very first operations on EVERY slide in the deck. The background never changes between slides; only the content changes.
+BACKGROUND DESIGN — YOU own this. There is no fixed template to copy. Design ONE background that genuinely fits this presentation's theme, then reuse it identically on every slide. A background = the slide "backgroundColor" + a small set of decorative shapes. Make deliberate, theme-driven choices for colour, shape vocabulary, and placement — the goal is a background that feels custom-designed for THIS topic, not a generic preset.
 
-Each background template uses TWO colors — accent (primary, darker) and accentSoft (secondary, lighter tint) — for visual depth.
+ANTI-PATTERN — do NOT reflexively place a single big circle in the bottom-right corner plus a bar across the top. That specific combination has been overused and now reads as a lazy default. Every deck should get a DIFFERENT background: vary the shape types (circles vs bands vs stars vs polygons vs lines), vary which corners/edges they sit in, vary their count and scale. A travel deck should not look like a finance deck. Decide fresh each time based on the theme below.
 
-STEP 1 — choose a background template (pick one, apply byte-for-byte to EVERY slide):
-  Option A "BR+TL+TR":      large ellipse BR (x=1480, y=620, w=440, h=440, fill=accent, opacity=0.14)  +  medium ellipse TL (x=0, y=0, w=300, h=300, fill=accentSoft, opacity=0.22)  +  small ellipse TR (x=1700, y=0, w=220, h=220, fill=accentSoft, opacity=0.15)
-  Option B "TR+BL+TL":      large ellipse TR (x=1700, y=0, w=460, h=460, fill=accent, opacity=0.13)  +  large ellipse BL (x=0, y=680, w=400, h=400, fill=accent, opacity=0.10)  +  small ellipse TL (x=0, y=0, w=240, h=240, fill=accentSoft, opacity=0.18)
-  Option C "BR+band+TL":    large ellipse BR (x=1480, y=620, w=460, h=460, fill=accent, opacity=0.13)  +  diagonal band (x=0, y=880, w=920, h=80, rotation=−14, fill=accentSoft, opacity=0.18)  +  small ellipse TL (x=0, y=0, w=200, h=200, fill=accentSoft, opacity=0.20)
-  Option D "TR+BL+CR":      large ellipse TR (x=1700, y=0, w=480, h=480, fill=accent, opacity=0.13)  +  medium ellipse BL (x=0, y=720, w=360, h=360, fill=accentSoft, opacity=0.20)  +  small ellipse CR (x=1860, y=440, w=140, h=140, fill=accent, opacity=0.10)
-On dark-background decks: replace fill=accent with fill="#ffffff" opacity=0.09, and fill=accentSoft with fill="#ffffff" opacity=0.05.
+STEP 1 — CHOOSE THE SHAPE VOCABULARY that matches the theme's mood (these are starting points — adapt freely):
+  · Technology / SaaS / AI / Data   → clean geometry: soft circles, rounded rects, a thin accent strip. Precise, minimal.
+  · Finance / Corporate / Legal     → restrained & formal: one or two large low-opacity circles, maybe a top rule. Lots of calm space.
+  · Nature / Travel / Wellness / Eco → organic: large overlapping ellipses evoking sun/hills/waves, gentle curves, warmer opacities.
+  · Creative / Marketing / Media     → bold & dynamic: a diagonal band (rotated rect), overlapping shapes, a star or polygon accent, higher opacity.
+  · Luxury / Editorial / Architecture→ ultra-minimal: a single thin rule or one subtle shape; negative space does the work.
+  · Science / Space / Gaming (dark)  → deep background with glowing accents: white/vivid shapes at low opacity, a couple of small bright dots.
+  Pick shapes from: ellipse, rect (optionally cornerRadius + rotation for bands), star, polygon, line. Match the vocabulary to the subject.
 
-STEP 2 — always add the top accent strip (primary color, full opacity) as the last background shape on every slide:
-  { type:"rect", x:0, y:0, width:1920, height:10, fill:accent, opacity:1 }
+STEP 2 — BUILD DEPTH WITH SIZE & OPACITY: use 2-4 shapes total. One larger "anchor" shape (opacity ~0.10-0.16) plus one or two smaller accents (opacity ~0.06-0.12). Optionally add a full-width top accent strip { type:"rect", x:0, y:0, width:1920, height:10, fill:accent, opacity:1 } as a crisp finishing detail. Use accent for stronger shapes and accentSoft for the subtler ones. On DARK backgrounds, shapes are fill="#ffffff" at opacity 0.05-0.10 (plus optional small vivid-accent dots).
 
-STEP 3 — for EVERY slide in the deck, immediately after the slide's "createSlide" op (or as the first elements on an existing slide), emit the identical background block: the chosen corner shapes then the top strip. The x, y, width, height, fill, opacity values must be byte-for-byte the same on slide 1, slide 3, slide 7 — every slide. These are "create" element ops (with type, x, y, width, height), NOT "createSlide" ops — never put aspectRatioPreset or backgroundColor on them.
-
-Decorative shapes ONLY in margin zones (never inside x=120..1800, y=80..960 where content lives):
+STEP 3 — PLACE SHAPES ONLY IN THE MARGINS, never behind the content zone (x=120..1800, y=80..960). Balance the composition: if a big shape anchors one corner, counter it with a smaller one in the opposite corner or edge. Safe zones (shapes may bleed off-canvas — the renderer clips overhang):
   TL x −100..200, y −100..200  ·  TR x 1720..2100, y −100..200
   BL x −100..200, y 880..1180  ·  BR x 1720..2100, y 880..1180
   CL x −120..100, y 400..680   ·  CR x 1820..2100, y 400..680
-Shapes extending off-canvas are fine — the renderer clips the overhang.
+Don't crowd — an elegant background is 2-4 well-placed shapes, not a busy scatter.
+
+STEP 4 — LOCK IT IN AND REUSE IT: once you've designed the background, emit that SAME set of shapes — byte-for-byte identical x, y, width, height, fill, opacity, rotation — on EVERY slide, as the first "create" ops right after each slide's "createSlide" op. The background is the deck's constant; only the content changes slide to slide. (These are "create" element ops with type/x/y/width/height — never put aspectRatioPreset or backgroundColor on them.) The backend also replicates your slide-1 background onto any slide you leave bare, but you should still emit it so you control the design.
+
+BACKGROUND RECIPES BY THEME — concrete, ready-to-use starting points. Pick the one matching your topic, swap in your exact accent hex, and reuse it identically on every slide. These are DIFFERENT on purpose — a travel deck must not look like a finance deck:
+  · Tech / SaaS / AI (accent #4f46e5, softTint #c7d2fe, bg #eef2ff):
+      ellipse TR   { x:1560, y:0,   width:360, height:360, fill:accent,   opacity:0.13 }
+      ellipse BL   { x:0,    y:700, width:400, height:380, fill:softTint, opacity:0.20 }
+      ellipse CL   { x:0,    y:430, width:150, height:150, fill:accent,   opacity:0.10 }
+  · Travel / Nature / Wellness (accent #0891b2, softTint #a5f3fc, bg #ecfeff) — organic sun/horizon:
+      ellipse BR   { x:1360, y:560, width:560, height:520, fill:accent,   opacity:0.12 }
+      ellipse BR2  { x:1600, y:760, width:340, height:320, fill:softTint, opacity:0.18 }
+      ellipse TL   { x:0,    y:0,   width:300, height:300, fill:softTint, opacity:0.16 }
+  · Finance / Corporate / Legal (accent #1e3a5f, softTint #dbeafe, bg #f8fafc) — restrained & formal:
+      ellipse TR   { x:1500, y:0,   width:420, height:420, fill:accent,   opacity:0.10 }
+      rect (rule)  { x:0,    y:0,   width:12,  height:1080, fill:accent,  opacity:1 }
+  · Creative / Marketing / Media (accent #ea580c, softTint #fed7aa, bg #fff7ed) — bold & energetic:
+      rect band    { x:0,    y:880, width:1920, height:150, fill:accent,   opacity:0.13, rotation:-10 }
+      star TR      { x:1620, y:40,  width:200,  height:200, fill:accent,   opacity:0.16 }
+      ellipse BL   { x:0,    y:720, width:300,  height:300, fill:softTint, opacity:0.20 }
+  · Dark / Premium / Space / Gaming (bg #0f172a, accent #38bdf8) — glowing on deep space:
+      ellipse BR   { x:1480, y:600, width:460, height:460, fill:#ffffff, opacity:0.06 }
+      ellipse TL   { x:0,    y:0,   width:300, height:300, fill:#ffffff, opacity:0.05 }
+      ellipse CR   { x:1800, y:460, width:120, height:120, fill:accent,  opacity:0.9 }
+Adapt freely — shift a shape to a different corner, swap ellipse for star/polygon, change the count. The point is that the background is deliberately designed for the topic, never a copy-paste default.
 
 WHAT YOU CAN AND CANNOT STYLE (the renderer ignores anything else, so don't waste operations on it):
 - Available: "fill", "stroke", "strokeWidth", "cornerRadius" (ONLY on "rect" — it is ignored on every other shape), "opacity", "rotation", and for text "fontSize"/"fontStyle"/"align"/"lineHeight"/"fontFamily".
@@ -309,28 +388,33 @@ WHAT YOU CAN AND CANNOT STYLE (the renderer ignores anything else, so don't wast
 - Text elements auto-grow downward from "y"; there is no vertical centering. To visually center a line inside a band or card of height H starting at bandY, set the text's y ≈ bandY + (H - fontSize * 1.2) / 2.
 - "icon" elements ignore "fill" — an icon renders in its own emoji colors, so never expect a tinted icon.
 
-COMPOSITION — before writing a deck, ASSIGN A COMPOSITION TO EVERY SLIDE, then build each slide to its assigned composition. Hard requirements for a deck of 4+ slides:
-  · The plain baseline title+body layout may be used on AT MOST half the slides — never on two slides in a row.
-  · The cover and the closing slide must both use the COVER TREATMENT composition.
-  · At least one middle slide must use ROUNDED CARDS, BIG NUMBER, SIDE PANEL or ASYMMETRIC SPLIT.
-  · No two consecutive slides may share the same composition.
-  · Every slide starts with the identical background template from BACKGROUND SHAPES (same shapes, same positions, every time).
-A deck where every middle slide is title + bullet list has FAILED these requirements, no matter how good the writing is.
-TOKEN BUDGET — the output is capped at 16 384 tokens total for the entire response. For a 10-slide deck that leaves roughly 1 500 tokens per slide (background + content). Stay within this budget by keeping each slide to 6-10 operations maximum: 3 background shapes + 1 title + 2-4 content elements. A card slide uses 3 cards (not 4) to save ops. Never add decorative elements beyond the shared background template — quality comes from clean layout, not element count. If the deck is large (8+ slides), prefer simpler compositions (TITLE+BODY, BIG NUMBER) over element-heavy ones (ROUNDED CARDS with many sub-elements).
-The compositions, with coordinates for 16:9 (1920x1080). On every slide: emit the background template FIRST, then the composition content below.
-- COVER TREATMENT: add a full-bleed accent wash on top of the shared background by emitting one "rect" { x:0, y:0, width:1920, height:1080, fill:accent } BEFORE the shared template shapes. The shared template shapes still appear on top of this wash (they use fill:"#ffffff" opacity values on the accent surface — adjust their fill to "#ffffff" on the cover only). All cover text fill:"#ffffff". Title fontSize 120–140 bold. Use for the cover slide, section breaks, and closing slide. The slide "backgroundColor" stays the deck's consistent color.
-- SIDE PANEL: a full-height "rect" at x=0,y=0,width=640,height=1080 filled with accent, title inside it (fill:"#ffffff"), body text to its right starting at x=760 (fill=ink).
-- TOP BAND: a "rect" at x=0,y=0,width=1920,height=280 filled with accent, title in fill:"#ffffff" inside it (y≈100), body text below starting at y=380 (fill=ink).
-- ROUNDED CARDS: exactly 3 "rect"s with "cornerRadius":24 and fill=accentSoft, in a row spanning x=120..1800, each holding THREE elements — an "icon" (emoji, 70×70), a bold label (fontSize 32), and a short 1-line description (fontSize 26, fill=inkMuted). That is 4 ops per card × 3 cards = 12 ops total. Width=533 each at x=120, 693, 1266 (gap 40), y=300, height=400. Child elements inset 40px from the card's x; use width=cardWidth-80. Emit ONLY the individual card rects. This is the signature "AI deck" look.
-- BIG NUMBER: an oversized numeral text (fontSize 140–200, fontStyle "bold", fill=accent) with a small label beneath it — repeated 2-4 times across the slide.
-- ASYMMETRIC SPLIT: title + short lead paragraph on the left half (x=120, width=760, fill=ink), a single large accent shape (rect with cornerRadius 24, or ellipse, fill=accent) filling the right half (x=1000, width=800, y=200, height=680) as a visual anchor.
-- QUOTE/STATEMENT: one short sentence at fontSize 64–80 centered with generous margins, fill=ink, plus a short thin accent "rect" (width≈120, height=8) above it as a decorative rule.
+COMPOSITION — the deck must look designed, not templated. Before writing, ASSIGN A DISTINCT COMPOSITION TO EACH SLIDE and vary them deliberately. Hard requirements for a deck of 4+ slides:
+  · The cover and the closing slide use COVER TREATMENT.
+  · Across the middle (content) slides you MUST use at least THREE DIFFERENT rich compositions from the library below — do not lean on one layout. A deck where every content slide is title+bullets is a FAILURE even if the writing is good.
+  · The plain baseline KICKER+TITLE+BODY may appear on at most half the slides, and NEVER on two consecutive slides.
+  · No two consecutive slides may share the same composition — alternate the visual rhythm (e.g. cards → stats → split → timeline → quote).
+  · Match the composition to the content: features/pillars → CARDS or FEATURE ROWS; metrics → STAT BAND; a process → TIMELINE; two things contrasted → COMPARISON; a key idea → BIG STATEMENT or ASYMMETRIC SPLIT.
+Think of each slide as a deliberate design choice — this is what separates a Gamma/Pitch-quality deck from a plain outline.
+
+TOKEN BUDGET — the response is capped, so spend tokens on CONTENT, not repetition. The background shapes are cheap (a handful of tiny ops) and the backend also enforces them, so never agonize over them. Put your budget into real, specific text and varied layouts. If a deck is very large (10+ slides), keep each slide's TEXT tight and punchy rather than dropping to bare title-only layouts — thin slides are never acceptable.
+
+THE COMPOSITION LIBRARY — coordinates for 16:9 (1920x1080). On every slide emit the background template first, then the kicker, then the composition below.
+- COVER TREATMENT: a full-bleed accent wash — one "rect" { x:0, y:0, width:1920, height:1080, fill:accent, opacity:1 } as the FIRST op, then a few bold decorative shapes on top with fill="#ffffff" at low opacity (0.06-0.12). All cover text fill="#ffffff": a kicker (fontSize 28), a huge title (fontSize 110-140 bold), and a one-line tagline (fontSize 34) below it. Use for the cover, section breaks, and closing slide.
+- KICKER + TITLE + BODY: the baseline box above. Kicker + title + a 3-5 bullet body block. Clean and readable.
+- ROUNDED CARDS: 3-4 "rect"s, cornerRadius 24, fill=accentSoft, in a row across x=120..1800 at y=320, height=440. Each card holds an "icon" (emoji, 80×80, centered near cardY+50), a bold label (fontSize 32, cardY+170), and a full 1-2 line description (fontSize 24, fill=inkMuted, cardY+250). For N cards: cardWidth = (1680-(N-1)*40)/N; card i x = 120 + i*(cardWidth+40); children inset 40px, width=cardWidth-80. The signature "AI deck" look.
+- FEATURE ROWS: 3-4 horizontal rows stacked down the slide (y=320, 500, 680, each 150 tall). Each row = an "icon" (72×72 at x=120) + a bold heading (fontSize 34, x=230) + a description sentence beneath it (fontSize 26, fill=inkMuted, x=230). Great for benefits/capabilities with more text than a card allows.
+- STAT BAND: 2-4 metric columns across the slide. Each = an oversized numeral (fontSize 130-180 bold, fill=accent), a bold label under it (fontSize 32, fill=ink), and a short context line (fontSize 24, fill=inkMuted). Center each column; space evenly across x=120..1800. Use for impact/results/traction.
+- TIMELINE / PROCESS: 3-5 step boxes ("rect", cornerRadius 24, fill=accentSoft) left-to-right at y=460, connected by "arrow" elements filling the gaps. Each box holds a step number/label (bold) and a short action sentence. boxWidth=(1680-(N-1)*120)/N; box i x=120+i*(boxWidth+120); arrow in each 120px gap.
+- COMPARISON (two columns): two "rect" panels (cornerRadius 24) side by side — left x=120 width=800, right x=1000 width=800, both y=300 height=560. Left fill=accentSoft (or a neutral), right fill=accent. Each panel has a bold heading (fontSize 36) and 3-4 bullet lines. Use for Before/After, Us/Them, Pros/Cons, Traditional/Modern.
+- SIDE PANEL: a full-height "rect" x=0,y=0,width=640,height=1080 fill=accent; kicker+title inside it (fill="#ffffff"); body/cards to its right starting at x=760 (fill=ink).
+- ASYMMETRIC SPLIT: kicker + title + a short lead paragraph on the left (x=120, width=760, fill=ink), and a single large accent shape (rect cornerRadius 24, or ellipse, fill=accent) anchoring the right half (x=1000, width=800, y=220, height=640). Optionally overlay one big number or icon on that shape.
+- BIG STATEMENT / QUOTE: one short powerful sentence at fontSize 64-84, fill=ink (or accent), generous margins, with a short thin accent "rect" (width≈120, height=8) above it as a rule. Use sparingly for a punchline or section pivot.
 
 TYPE SCALE — use these sizes so hierarchy reads from the back of a room:
-  cover title 110-140 bold · section-break title 90-110 bold · slide title 64-76 bold · card/step label 30-36 bold · body & bullets 30-36 · caption/footnote 22-26 · big-number stat 140-200 bold.
+  kicker/eyebrow 24-28 bold uppercase (fill=accent) · cover title 110-140 bold · section-break title 90-110 bold · slide title 60-76 bold · card/step label 30-36 bold · body & bullets 28-36 · caption/footnote 22-26 · big-number stat 130-200 bold.
 Body copy is never smaller than 28. Keep any one text element under ~60 words; if it needs more, split it across cards or a second slide.
 
-CONTRAST — pair text color to the surface it sits on: light background (accentSoft / "#f8fafc" / "#fafaf9") → fill=ink (#111827) with inkMuted (#6b7280) for support; dark background ("#0f172a" / "#111827") → fill="#ffffff" for ALL text; accent-colored surface (the COVER TREATMENT full-bleed rect, SIDE PANEL rect, TOP BAND rect) → fill="#ffffff". Never dark text on a dark surface or light text on a light surface. Always set "fill" explicitly on every text element — never omit it.
+CONTRAST — pair text color to the surface it sits on: light background (accentSoft / "#f8fafc" / "#fafaf9") → fill=ink (#111827) with inkMuted (#6b7280) for support; dark background ("#0f172a" / "#111827") → fill="#ffffff" for ALL text; accent-colored surface (the COVER TREATMENT full-bleed rect, SIDE PANEL rect, COMPARISON accent panel, any rect filled with accent) → fill="#ffffff". Never dark text on a dark surface or light text on a light surface. Always set "fill" explicitly on every text element — never omit it.
 
 WHITESPACE — keep a 120px margin on all four sides (content spans x=120..1800). Leave at least 40px between any two elements. An uncrowded slide with 4-6 well-placed elements always beats a busy one; never fill space just because it is empty.
 
