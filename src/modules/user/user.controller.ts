@@ -1,8 +1,18 @@
 import { type Request, type Response } from "express";
 
 import { dbService } from "@/services/db.service.js";
+import { JwtUtils } from "@/utils/jwt.utils.js";
 
-import type { SearchUsersQuery, UpdateUsernameBody } from "./user.validation.js";
+import type { CreateUserBody, SearchUsersQuery, UpdateUsernameBody } from "./user.validation.js";
+
+const jwtUtils = JwtUtils.getInstance();
+
+export const createUser = async (req: Request<unknown, unknown, CreateUserBody>, res: Response) => {
+  const { username, email, avatarUrl } = req.body;
+  const user = await dbService.upsertUser({ username, email, avatarUrl });
+  const accessToken = jwtUtils.generateAccessToken({ userId: user.userId });
+  res.status(200).json({ accessToken });
+};
 
 export const getProfile = (req: Request, res: Response) => {
   const { userId, email, username, avatarUrl } = req.user!;

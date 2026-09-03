@@ -3,10 +3,12 @@ import { Router } from "express";
 import { requireAuth } from "@/middlewares/index.js";
 import { validateBody, validateQuery } from "@/middlewares/validation.middleware.js";
 
-import { getProfile, searchUsers, updateUsername } from "./user.controller.js";
-import { searchUsersQuerySchema, updateUsernameSchema } from "./user.validation.js";
+import { createUser, getProfile, searchUsers, updateUsername } from "./user.controller.js";
+import { createUserSchema, searchUsersQuerySchema, updateUsernameSchema } from "./user.validation.js";
 
 const router = Router();
+
+router.post("/", validateBody(createUserSchema), createUser);
 
 router.use(requireAuth);
 

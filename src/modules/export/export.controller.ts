@@ -112,6 +112,34 @@ export const exportPptx = async (req: Request<ProjectIdParams>, res: Response) =
           slide.addShape(pptx.ShapeType.hexagon, baseOpts);
           break;
 
+        case "diamond":
+          slide.addShape(pptx.ShapeType.diamond, baseOpts);
+          break;
+
+        case "parallelogram":
+          slide.addShape(pptx.ShapeType.parallelogram, baseOpts);
+          break;
+
+        case "trapezoid":
+          slide.addShape(pptx.ShapeType.trapezoid, baseOpts);
+          break;
+
+        case "cross":
+          slide.addShape(pptx.ShapeType.plus, baseOpts);
+          break;
+
+        case "heart":
+          slide.addShape(pptx.ShapeType.heart, baseOpts);
+          break;
+
+        case "cloud":
+          slide.addShape(pptx.ShapeType.cloud, baseOpts);
+          break;
+
+        case "callout":
+          slide.addShape(pptx.ShapeType.callout1, baseOpts);
+          break;
+
         case "line":
           slide.addShape(pptx.ShapeType.line, {
             x: xPct,
