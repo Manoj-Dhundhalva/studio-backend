@@ -18,6 +18,13 @@ export const CANVAS_ELEMENT_TYPES = [
   "text",
   "image",
   "icon",
+  "diamond",
+  "heart",
+  "cross",
+  "parallelogram",
+  "trapezoid",
+  "cloud",
+  "callout",
 ] as const;
 
 export type TCanvasElementType = (typeof CANVAS_ELEMENT_TYPES)[number];

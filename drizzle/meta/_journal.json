@@ -57,6 +57,13 @@
       "when": 1788391083821,
       "tag": "0007_kind_red_shift",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1756900000000,
+      "tag": "0008_new_shape_types",
+      "breakpoints": true
     }
   ]
 }
