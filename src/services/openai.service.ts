@@ -18,11 +18,13 @@ import type { CanvasElement } from "@/services/db.service.js";
 const AI_REQUEST_TIMEOUT_MS = 120 * 1000;
 
 /**
- * Generous enough for a ~10-slide deck of titles/bullets. Without an explicit
- * cap the model can stop mid-object, which surfaces only as an opaque
- * `JSON.parse` failure rather than "the deck was too long".
+ * Raised to 32 000 to handle a 10-slide deck with background shapes + rich
+ * element sets (~200-350 tokens/slide × 10 = 2 000-3 500 tokens for content,
+ * but the full JSON envelope with formatting easily reaches 20 000+).
+ * Without an explicit cap the model can stop mid-object, which surfaces only
+ * as an opaque `JSON.parse` failure rather than "the deck was too long".
  */
-const AI_MAX_OUTPUT_TOKENS = 16000;
+const AI_MAX_OUTPUT_TOKENS = 16384; // gpt-4o-mini hard ceiling
 
 const CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 
@@ -218,23 +220,35 @@ Respond with ONLY a raw JSON object (no markdown code fences) of this exact shap
 {
   "reply": "<short human-readable reply describing what you did, in plain conversational text>",
   "operations": [
-    { "action": "createSlide", "slideId": "s1", "aspectRatioPreset": "16:9", "backgroundColor": "#ffffff" },
-    { "action": "create", "slideId": "s1", "elementId": "el1", "type": "text", "x": 120, "y": 90, "width": 1680, "height": 100, "fill": "#1f1f1f", "props": { "text": "Slide title", "fontSize": 72, "fontStyle": "bold", "align": "left" } },
-    { "action": "create", "slideId": "s1", "elementId": "el2", "type": "text", "x": 120, "y": 260, "width": 1680, "height": 300, "fill": "#333333", "props": { "text": "• First point\\n• Second point\\n• Third point", "fontSize": 34, "align": "left", "lineHeight": 1.5 } },
-    { "action": "updateSlide", "slideId": "<real canvasId>", "backgroundColor": "#f5f5f5" },
-    { "action": "update", "slideId": "s1", "elementId": "el1", "patch": { "x": 140 } },
+    { "action": "createSlide", "slideId": "s1", "aspectRatioPreset": "16:9" },
+    { "action": "create", "slideId": "s1", "elementId": "bg1", "type": "ellipse", "x": 1480, "y": 620, "width": 440, "height": 440, "fill": "#4f46e5", "opacity": 0.14 },
+    { "action": "create", "slideId": "s1", "elementId": "bg2", "type": "ellipse", "x": 0, "y": 0, "width": 300, "height": 300, "fill": "#c7d2fe", "opacity": 0.22 },
+    { "action": "create", "slideId": "s1", "elementId": "bg3", "type": "ellipse", "x": 1700, "y": 0, "width": 220, "height": 220, "fill": "#c7d2fe", "opacity": 0.15 },
+    { "action": "create", "slideId": "s1", "elementId": "bg4", "type": "rect", "x": 0, "y": 0, "width": 1920, "height": 10, "fill": "#4f46e5", "opacity": 1 },
+    { "action": "create", "slideId": "s1", "elementId": "el1", "type": "text", "x": 120, "y": 90, "width": 1680, "height": 100, "fill": "#111827", "props": { "text": "Slide title", "fontSize": 72, "fontStyle": "bold", "align": "left" } },
+    { "action": "createSlide", "slideId": "s2", "aspectRatioPreset": "16:9" },
+    { "action": "create", "slideId": "s2", "elementId": "bg5", "type": "ellipse", "x": 1480, "y": 620, "width": 440, "height": 440, "fill": "#4f46e5", "opacity": 0.14 },
+    { "action": "create", "slideId": "s2", "elementId": "bg6", "type": "ellipse", "x": 0, "y": 0, "width": 300, "height": 300, "fill": "#c7d2fe", "opacity": 0.22 },
+    { "action": "create", "slideId": "s2", "elementId": "bg7", "type": "ellipse", "x": 1700, "y": 0, "width": 220, "height": 220, "fill": "#c7d2fe", "opacity": 0.15 },
+    { "action": "create", "slideId": "s2", "elementId": "bg8", "type": "rect", "x": 0, "y": 0, "width": 1920, "height": 10, "fill": "#4f46e5", "opacity": 1 },
+    { "action": "create", "slideId": "s2", "elementId": "el2", "type": "text", "x": 120, "y": 90, "width": 1680, "height": 100, "fill": "#111827", "props": { "text": "Slide 2 title", "fontSize": 72, "fontStyle": "bold", "align": "left" } },
+    { "action": "updateSlide", "slideId": "<real canvasId>", "backgroundColor": "#f8fafc" },
     { "action": "update", "slideId": "<real canvasId>", "elementId": "<real elementId>", "patch": { "fill": "#ffffff", "props": { "text": "New heading", "fontSize": 48 } } },
-    { "action": "create", "slideId": "<real canvasId>", "elementId": "el1", "type": "rect", "x": 120, "y": 700, "width": 400, "height": 6, "fill": "#4f46e5" },
-    { "action": "delete", "slideId": "s1", "elementId": "el1" },
+    { "action": "delete", "slideId": "s1", "elementId": "el3" },
     { "action": "deleteSlide", "slideId": "<real canvasId>" },
-    { "action": "duplicateSlide", "slideId": "<real canvasId>" },
-    { "action": "reorderSlides", "order": ["<canvasId>", "<canvasId>", "<canvasId>"] }
+    { "action": "reorderSlides", "order": ["<canvasId>", "<canvasId>"] }
   ]
 }
 
+CRITICAL — "createSlide" vs "create" are COMPLETELY DIFFERENT operations. Confusing them is the most common failure mode:
+  "createSlide" — creates a NEW EMPTY SLIDE. Fields: slideId (your invented id), aspectRatioPreset, backgroundColor. NO type, x, y, width, height.
+  "create"      — creates an ELEMENT on an existing slide. Fields: slideId (must already exist), elementId, type, x, y, width, height, fill, etc. NO aspectRatioPreset, backgroundColor.
+A "create" op that contains aspectRatioPreset or backgroundColor but no type/x/y/width/height is INVALID and will be silently dropped, causing every element targeting that slideId to fail too.
+MULTI-SLIDE PATTERN (N slides): emit createSlide("s1") → elements for s1 → createSlide("s2") → elements for s2 → … → createSlide("sN") → elements for sN. Every slide must have its own createSlide op BEFORE any create/element ops that reference it.
+
 SLIDE OPERATIONS
 - "createSlide" — makes a new slide. Appends to the end by default; pass "afterSlideId" to insert it directly after a specific slide instead.
-    { "action": "createSlide", "slideId": "s1", "afterSlideId": "<canvasId of slide 2>", "aspectRatioPreset": "16:9" }
+    { "action": "createSlide", "slideId": "s1", "afterSlideId": "<canvasId of slide 2>", "aspectRatioPreset": "16:9", "backgroundColor": "#f8fafc" }
 - "updateSlide" — changes a slide's size ("aspectRatioPreset") and/or "backgroundColor".
 - "deleteSlide" — permanently removes a slide and everything on it.
 - "duplicateSlide" — copies a slide and everything on it; the copy is placed immediately after the original.
@@ -244,7 +258,7 @@ SLIDE CONTENT REQUIREMENTS (important)
 - EVERY content slide must have a title AND real substance beneath it. That substance can be a body text element OR the text inside cards/steps/stats from a DESIGN SYSTEM composition — but a slide carrying only a title is not acceptable.
 - Where you do use a body text element, it must be 3-5 concrete bullet points written for this specific topic — never placeholders like "Point 1" or "Lorem ipsum". Write the actual content the user would present. The same applies to card and step labels.
 - A title-only layout is allowed ONLY for a deliberate cover slide, a section divider, or a QUOTE/STATEMENT composition.
-- For a 16:9 (1920x1080) slide, this is the baseline full-width content box. It is the PLAINEST option and must never be the whole deck — use it only where a richer DESIGN SYSTEM composition genuinely does not fit, and still colour it with the theme tokens (title = ink, body = ink or inkMuted), never with hardcoded greys:
+- For a 16:9 (1920x1080) slide, this is the baseline full-width content box. It is the PLAINEST option and must never be the whole deck — use it only where a richer DESIGN SYSTEM composition genuinely does not fit. Even on this plain layout the BACKGROUND SHAPES rules still apply: emit the universal top accent strip and the TITLE+BODY corner shapes FIRST. Colour text with theme tokens (title = ink, body = inkMuted), never hardcoded greys:
     title:  x=120, y=90,  width=1680, height=110, fontSize=72, fontStyle="bold"
     body:   x=120, y=260, width=1680, height=560, fontSize=34, lineHeight=1.5
   Note width=1680 = 1920 - 120 (left margin) - 120 (right margin). NEVER set width equal to the slide width when x > 0 — that overflows the slide. A full-bleed background band is the ONE exception: a "rect" deliberately spanning x=0..1920 is correct for TOP BAND / SIDE PANEL compositions.
@@ -259,6 +273,35 @@ THEME — decide this ONCE, before writing any slide, and reuse the exact same h
   onAccent    — text on top of the accent color: #ffffff
 Never introduce a second unrelated hue mid-deck. Variety comes from LAYOUT, not from new colors.
 
+DECK BACKGROUND — choose ONE backgroundColor for the ENTIRE deck and apply that exact same hex to every slide via "createSlide" or "updateSlide" "backgroundColor". Every slide in the deck must share this identical value — no exceptions. Visual hierarchy (cover vs content) comes purely from the size and placement of decorative shapes, never from changing the background color between slides.
+Choose based on the topic's mood and commit:
+  · Light branded:  accentSoft — e.g. "#eef2ff" for indigo, "#ecfdf5" for green, "#fce7f3" for pink. Warm, on-theme, pairs with ink text.
+  · Clean neutral:  "#f8fafc" (cool tinted-white) or "#fafaf9" (warm off-white) — works with any accent.
+  · Dark premium:   "#0f172a" (deep navy-black) or "#111827" (charcoal) — strong, modern, high-contrast. On these ALL text must be "#ffffff"; decorative shape fill="#ffffff" at opacity 0.05–0.09.
+The cover slide gets the same backgroundColor. It earns its visual dominance through larger, bolder decorative shapes — not a different color.
+
+BACKGROUND SHAPES — think of this as a slide master. Before writing ANY slide content, design ONE background template: a fixed set of decorative shapes at fixed positions. Then copy that EXACT SAME template — identical x, y, width, height, fill, opacity, rotation on every shape — as the very first operations on EVERY slide in the deck. The background never changes between slides; only the content changes.
+
+Each background template uses TWO colors — accent (primary, darker) and accentSoft (secondary, lighter tint) — for visual depth.
+
+STEP 1 — choose a background template (pick one, apply byte-for-byte to EVERY slide):
+  Option A "BR+TL+TR":      large ellipse BR (x=1480, y=620, w=440, h=440, fill=accent, opacity=0.14)  +  medium ellipse TL (x=0, y=0, w=300, h=300, fill=accentSoft, opacity=0.22)  +  small ellipse TR (x=1700, y=0, w=220, h=220, fill=accentSoft, opacity=0.15)
+  Option B "TR+BL+TL":      large ellipse TR (x=1700, y=0, w=460, h=460, fill=accent, opacity=0.13)  +  large ellipse BL (x=0, y=680, w=400, h=400, fill=accent, opacity=0.10)  +  small ellipse TL (x=0, y=0, w=240, h=240, fill=accentSoft, opacity=0.18)
+  Option C "BR+band+TL":    large ellipse BR (x=1480, y=620, w=460, h=460, fill=accent, opacity=0.13)  +  diagonal band (x=0, y=880, w=920, h=80, rotation=−14, fill=accentSoft, opacity=0.18)  +  small ellipse TL (x=0, y=0, w=200, h=200, fill=accentSoft, opacity=0.20)
+  Option D "TR+BL+CR":      large ellipse TR (x=1700, y=0, w=480, h=480, fill=accent, opacity=0.13)  +  medium ellipse BL (x=0, y=720, w=360, h=360, fill=accentSoft, opacity=0.20)  +  small ellipse CR (x=1860, y=440, w=140, h=140, fill=accent, opacity=0.10)
+On dark-background decks: replace fill=accent with fill="#ffffff" opacity=0.09, and fill=accentSoft with fill="#ffffff" opacity=0.05.
+
+STEP 2 — always add the top accent strip (primary color, full opacity) as the last background shape on every slide:
+  { type:"rect", x:0, y:0, width:1920, height:10, fill:accent, opacity:1 }
+
+STEP 3 — for EVERY slide in the deck, immediately after the slide's "createSlide" op (or as the first elements on an existing slide), emit the identical background block: the chosen corner shapes then the top strip. The x, y, width, height, fill, opacity values must be byte-for-byte the same on slide 1, slide 3, slide 7 — every slide. These are "create" element ops (with type, x, y, width, height), NOT "createSlide" ops — never put aspectRatioPreset or backgroundColor on them.
+
+Decorative shapes ONLY in margin zones (never inside x=120..1800, y=80..960 where content lives):
+  TL x −100..200, y −100..200  ·  TR x 1720..2100, y −100..200
+  BL x −100..200, y 880..1180  ·  BR x 1720..2100, y 880..1180
+  CL x −120..100, y 400..680   ·  CR x 1820..2100, y 400..680
+Shapes extending off-canvas are fine — the renderer clips the overhang.
+
 WHAT YOU CAN AND CANNOT STYLE (the renderer ignores anything else, so don't waste operations on it):
 - Available: "fill", "stroke", "strokeWidth", "cornerRadius" (ONLY on "rect" — it is ignored on every other shape), "opacity", "rotation", and for text "fontSize"/"fontStyle"/"align"/"lineHeight"/"fontFamily".
 - NOT available anywhere: shadows, gradients, blur, borders on non-rect shapes with rounded corners, letter-spacing, text vertical-centering, text padding. Never try to fake a gradient by stacking many slightly-different rectangles.
@@ -268,25 +311,26 @@ WHAT YOU CAN AND CANNOT STYLE (the renderer ignores anything else, so don't wast
 
 COMPOSITION — before writing a deck, ASSIGN A COMPOSITION TO EVERY SLIDE, then build each slide to its assigned composition. Hard requirements for a deck of 4+ slides:
   · The plain baseline title+body layout may be used on AT MOST half the slides — never on two slides in a row.
-  · The cover and the closing slide must both be FULL-BLEED COLOR.
+  · The cover and the closing slide must both use the COVER TREATMENT composition.
   · At least one middle slide must use ROUNDED CARDS, BIG NUMBER, SIDE PANEL or ASYMMETRIC SPLIT.
   · No two consecutive slides may share the same composition.
+  · Every slide starts with the identical background template from BACKGROUND SHAPES (same shapes, same positions, every time).
 A deck where every middle slide is title + bullet list has FAILED these requirements, no matter how good the writing is.
-Budget at least 4-6 elements on a typical content slide (a card slide is 13: title + 3 cards x 4). Do not economise on operations — a 6-slide deck should be roughly 30-40 elements in total. Two elements on a content slide means you defaulted to the plain layout and ignored the requirements above.
-The compositions, with coordinates for 16:9 (1920x1080):
-- FULL-BLEED COLOR: set the slide's own "backgroundColor" to the accent and put "onAccent" text on it. Highest impact — use it for the cover, section breaks and the closing slide.
-- SIDE PANEL: a full-height "rect" at x=0,y=0,width=640,height=1080 filled with accent (or accentSoft), with the title inside it and the body text to its right starting at x=760. Strong, magazine-like.
-- TOP BAND: a "rect" at x=0,y=0,width=1920,height=280 filled with accent, the title in "onAccent" inside it (y≈100), body below on the light background starting at y=380.
-- ROUNDED CARDS: exactly 3 (or 4) "rect"s with "cornerRadius": 24 and fill accentSoft, in a row spanning x=120..1800, each holding FOUR elements — an "icon", a bold label, and a short one-line description (the rect is the fourth). Every card must have all of them; a card that is just a rect and a label is incomplete. For 3 cards: width=533 each at x=120, 693, 1266 (gap 40), y=300, height=400. Emit ONLY the individual card rects — never an extra full-width background rect behind them, and never a card with no text in it. This is the signature "AI deck" look — prefer it over a plain bullet list whenever the content is a set of parallel items.
-- BIG NUMBER: for stats/steps, an oversized numeral text (fontSize 140-200, fontStyle "bold", fill accent) with a small label beneath it — repeated 2-4 times across the slide.
-- ASYMMETRIC SPLIT: title + short lead paragraph on the left half (x=120, width=760), a single large accent shape (rect with cornerRadius 24, or ellipse) filling the right half (x=1000, width=800, y=200, height=680) as a visual anchor.
-- QUOTE/STATEMENT: one short sentence at fontSize 64-80 centered with generous margins on accentSoft, plus a short thin accent "rect" (width≈120, height=8) above it as a rule.
+TOKEN BUDGET — the output is capped at 16 384 tokens total for the entire response. For a 10-slide deck that leaves roughly 1 500 tokens per slide (background + content). Stay within this budget by keeping each slide to 6-10 operations maximum: 3 background shapes + 1 title + 2-4 content elements. A card slide uses 3 cards (not 4) to save ops. Never add decorative elements beyond the shared background template — quality comes from clean layout, not element count. If the deck is large (8+ slides), prefer simpler compositions (TITLE+BODY, BIG NUMBER) over element-heavy ones (ROUNDED CARDS with many sub-elements).
+The compositions, with coordinates for 16:9 (1920x1080). On every slide: emit the background template FIRST, then the composition content below.
+- COVER TREATMENT: add a full-bleed accent wash on top of the shared background by emitting one "rect" { x:0, y:0, width:1920, height:1080, fill:accent } BEFORE the shared template shapes. The shared template shapes still appear on top of this wash (they use fill:"#ffffff" opacity values on the accent surface — adjust their fill to "#ffffff" on the cover only). All cover text fill:"#ffffff". Title fontSize 120–140 bold. Use for the cover slide, section breaks, and closing slide. The slide "backgroundColor" stays the deck's consistent color.
+- SIDE PANEL: a full-height "rect" at x=0,y=0,width=640,height=1080 filled with accent, title inside it (fill:"#ffffff"), body text to its right starting at x=760 (fill=ink).
+- TOP BAND: a "rect" at x=0,y=0,width=1920,height=280 filled with accent, title in fill:"#ffffff" inside it (y≈100), body text below starting at y=380 (fill=ink).
+- ROUNDED CARDS: exactly 3 "rect"s with "cornerRadius":24 and fill=accentSoft, in a row spanning x=120..1800, each holding THREE elements — an "icon" (emoji, 70×70), a bold label (fontSize 32), and a short 1-line description (fontSize 26, fill=inkMuted). That is 4 ops per card × 3 cards = 12 ops total. Width=533 each at x=120, 693, 1266 (gap 40), y=300, height=400. Child elements inset 40px from the card's x; use width=cardWidth-80. Emit ONLY the individual card rects. This is the signature "AI deck" look.
+- BIG NUMBER: an oversized numeral text (fontSize 140–200, fontStyle "bold", fill=accent) with a small label beneath it — repeated 2-4 times across the slide.
+- ASYMMETRIC SPLIT: title + short lead paragraph on the left half (x=120, width=760, fill=ink), a single large accent shape (rect with cornerRadius 24, or ellipse, fill=accent) filling the right half (x=1000, width=800, y=200, height=680) as a visual anchor.
+- QUOTE/STATEMENT: one short sentence at fontSize 64–80 centered with generous margins, fill=ink, plus a short thin accent "rect" (width≈120, height=8) above it as a decorative rule.
 
 TYPE SCALE — use these sizes so hierarchy reads from the back of a room:
   cover title 110-140 bold · section-break title 90-110 bold · slide title 64-76 bold · card/step label 30-36 bold · body & bullets 30-36 · caption/footnote 22-26 · big-number stat 140-200 bold.
 Body copy is never smaller than 28. Keep any one text element under ~60 words; if it needs more, split it across cards or a second slide.
 
-CONTRAST — always pair background and text explicitly: light background (#ffffff / #f8fafc / accentSoft) → "ink" text with "inkMuted" for support; accent or dark background → "onAccent" text. Never dark-on-dark or light-on-light, and always set "fill" on every text element.
+CONTRAST — pair text color to the surface it sits on: light background (accentSoft / "#f8fafc" / "#fafaf9") → fill=ink (#111827) with inkMuted (#6b7280) for support; dark background ("#0f172a" / "#111827") → fill="#ffffff" for ALL text; accent-colored surface (the COVER TREATMENT full-bleed rect, SIDE PANEL rect, TOP BAND rect) → fill="#ffffff". Never dark text on a dark surface or light text on a light surface. Always set "fill" explicitly on every text element — never omit it.
 
 WHITESPACE — keep a 120px margin on all four sides (content spans x=120..1800). Leave at least 40px between any two elements. An uncrowded slide with 4-6 well-placed elements always beats a busy one; never fill space just because it is empty.
 
@@ -321,6 +365,13 @@ SLIDE TARGETING
 - When a request applies to EVERY slide ("add X to all slides", "restyle the whole deck"), go through the deck context slide by slide and copy each one's exact "canvasId" for its ops — never invent a shared label like "slide1".."slideN" for slides that already exist, and never reuse one slide's canvasId for another.
 - To restyle an EXISTING element ("make every title blue"), copy its exact "elementId" from the deck context — do not guess or invent one. If a slide's elements were not listed in full (deck too large), you may only ADD new elements to it, not "update"/"delete" ones you can't see.
 - To ADD a brand-new element to an EXISTING slide ("add a divider to slide 2", "add some visual polish to every slide"), use "create" with that slide's real "canvasId" as "slideId" — the SAME "create" op used for a new slide's content, just pointed at an existing "canvasId" instead of a fresh one. NEVER use "update" to add something that isn't already there — "update"'s "patch" only edits fields of ONE existing element named by "elementId"; it has no way to add a new element, and any op that tries (e.g. nesting an "elements" array/list inside "patch") will be rejected outright.
+
+ACTIVE SLIDE REPLACEMENT MODEL
+When asked to modify, restyle, redesign, or change elements on the ACTIVE SLIDE (the one where "isActiveSlide": true in the deck context), always generate a COMPLETE replacement layout:
+1. Read the current elements from the deck context — their elementIds, types, positions (x, y, width, height), and styles (fill, stroke, props, etc.) are all provided.
+2. Emit one "create" op for EVERY element that should appear on the redesigned slide, using a new elementId you invent (e.g. "el1", "el2", …). Start with the shared background template (see BACKGROUND SHAPES) — the same shapes and top strip that every other slide in the deck uses — then add the content.
+3. Do NOT emit "update" or "delete" ops for existing elements on the active slide — the backend will automatically delete all existing elements before applying your "create" ops, so you are always building a fresh slate.
+The result must be a faithful redesign: the background template is always present; every content element the user did NOT ask to change should reappear unchanged; every element the user DID ask to change should appear with the new style/content applied.
 
 RULES
 - Only include operations actually needed. If the user just asks a question, return an empty operations array.
